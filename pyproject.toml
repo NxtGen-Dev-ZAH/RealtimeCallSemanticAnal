@@ -1,0 +1,43 @@
+[project]
+name = "call-analysis"
+version = "0.1.0"
+description = "AI-powered call center sentiment analysis and sale prediction system"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0.0",
+    "transformers>=4.30.0",
+    "librosa>=0.10.0",
+    "openai-whisper>=20230314",
+    "pyannote-audio==3.1.1",
+    "scikit-learn>=1.3.0",
+    "xgboost>=1.7.0",
+    "pandas>=2.0.0",
+    "numpy==1.26.4",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "plotly>=5.15.0",
+    "flask>=2.3.0",
+    "flask-cors>=4.0.0",
+    "pydub>=0.25.0",
+    "soundfile>=0.12.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "pymongo>=4.15.1",
+    "jiwer>=4.0.0",
+    "spacy==3.7.5",
+    "download>=0.3.5",
+    "reportlab",
+    "thinc==8.2.4",
+    "pip>=25.2",
+]
+
+[project.scripts]
+call-analysis = "call_analysis:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend/src/call_analysis"]

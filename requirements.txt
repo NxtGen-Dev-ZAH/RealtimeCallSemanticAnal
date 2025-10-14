@@ -1,0 +1,31 @@
+# Call Analysis System Requirements
+# Core ML and Data Processing
+torch>=2.0.0
+transformers>=4.30.0
+scikit-learn>=1.3.0
+xgboost>=1.7.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Audio Processing
+librosa>=0.10.0
+openai-whisper>=20230314
+pyannote.audio>=3.1.0
+pydub>=0.25.0
+soundfile>=0.12.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.15.0
+
+# Web Framework
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# Utilities
+requests>=2.31.0
+python-dotenv>=1.0.0
+joblib>=1.3.0
+pymongo>=4.5.0
+spacy>=3.7.0
