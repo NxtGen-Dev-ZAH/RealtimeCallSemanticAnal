@@ -17,9 +17,18 @@ import torch
 from pymongo import MongoClient
 from datetime import datetime
 import spacy
+import unicodedata
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+MONGO_ENABLED = os.getenv('MONGODB_ENABLED', 'false').lower() == 'true'
+MONGO_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
+MONGO_DB_NAME = os.getenv('MONGODB_DATABASE', 'call_center_db')
+
+_BERT_TOKENIZER = None
+_BERT_MODEL = None
 
 # Load spaCy model for PII masking
 # Load spaCy for PII masking (optional)
@@ -43,9 +52,13 @@ class FeatureExtractor:
         self.text_scaler = StandardScaler()
         self.is_fitted = False
         
-        # BERT for text features (FR-4: fine-tuned BERT for sentiment)
-        self.bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        self.bert_model = BertModel.from_pretrained('bert-base-uncased')
+        global _BERT_TOKENIZER, _BERT_MODEL
+        if _BERT_TOKENIZER is None:
+            _BERT_TOKENIZER = BertTokenizer.from_pretrained('bert-base-uncased')
+        if _BERT_MODEL is None:
+            _BERT_MODEL = BertModel.from_pretrained('bert-base-uncased')
+        self.bert_tokenizer = _BERT_TOKENIZER
+        self.bert_model = _BERT_MODEL
         
         # Placeholder for sentiment classifier (e.g., fine-tuned on top of BERT)
         # In practice, train this with your dataset
@@ -61,6 +74,18 @@ class FeatureExtractor:
         Returns:
             Anonymized text.
         """
+        if not text or not text.strip():
+            return text
+        
+        if not SPACY_AVAILABLE or nlp is None:
+            # Fallback to simple regex-based masking if spaCy not available
+            import re
+            phone_pattern = r'(?:(?:\+?\d{1,2}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4})'
+            text = re.sub(phone_pattern, '[PHONE]', text)
+            # Mask email addresses
+            text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '[EMAIL]', text)
+            return text
+        
         try:
             doc = nlp(text)
             for ent in doc.ents:
@@ -318,9 +343,12 @@ class FeatureExtractor:
             features: Feature vector.
             call_id: Unique call identifier.
         """
+        if not MONGO_ENABLED:
+            logger.debug("MongoDB disabled - skipping feature persistence")
+            return
         try:
-            client = MongoClient('mongodb://localhost:27017/')  # Adjust URI as needed
-            db = client['call_center_db']
+            client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000)
+            db = client[MONGO_DB_NAME]
             collection = db['features']
             collection.insert_one({
                 'call_id': call_id,

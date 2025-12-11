@@ -514,6 +514,20 @@ class Dashboard:
             logger.error(f"Dashboard HTML creation failed: {e}")
             raise
     
+    def generate_dashboard(self, analysis_results: Dict, call_id: str = None, output_path: str = None) -> str:
+        """
+        Generate dashboard HTML and save to disk (if output_path provided).
+        """
+        html = self.create_dashboard_html(analysis_results, call_id=call_id)
+        if output_path is not None:
+            try:
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(html)
+                logger.info(f"Dashboard saved to {output_path}")
+            except Exception as e:
+                logger.error(f"Failed to write dashboard HTML: {e}")
+        return html
+    
     def create_batch_dashboards(self, results_list: List[Dict], output_dir: str) -> List[str]:
         """
         Create dashboards for multiple conversations (performance optimization).

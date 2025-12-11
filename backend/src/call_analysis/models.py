@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 import xgboost as xgb
 import torch
 import torch.nn as nn
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, pipeline
 import joblib
 import os
 
@@ -36,18 +36,30 @@ class SentimentAnalyzer:
         self.model = None
         self.classifier = None
         self.is_trained = False
+        self.sentiment_pipeline = None
         self._load_model()
     
     def _load_model(self):
-        """Load pre-trained BERT model"""
+        """Load pre-trained BERT model and sentiment pipeline"""
         try:
-            logger.info(f"Loading {self.model_name} model...")
+            logger.info(f"Loading sentiment analysis pipeline...")
+            # Use Hugging Face's pre-trained sentiment analysis pipeline
+            self.sentiment_pipeline = pipeline(
+                "sentiment-analysis",
+                model="distilbert-base-uncased-finetuned-sst-2-english",
+                return_all_scores=False
+            )
+            logger.info("Sentiment analysis pipeline loaded successfully")
+            
+            # Also load base model for embeddings if needed
+            logger.info(f"Loading {self.model_name} model for embeddings...")
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModel.from_pretrained(self.model_name)
             logger.info("BERT model loaded successfully")
         except Exception as e:
-            logger.warning(f"Could not load BERT model: {e}")
-            logger.info("Using simplified sentiment analysis for demo")
+            logger.warning(f"Could not load models: {e}")
+            logger.info("Falling back to keyword-based sentiment analysis")
+            self.sentiment_pipeline = None
     
     def extract_embeddings(self, texts: List[str]) -> np.ndarray:
         """
@@ -84,7 +96,7 @@ class SentimentAnalyzer:
     
     def analyze_sentiment(self, text: str) -> Dict:
         """
-        Analyze sentiment of a single text
+        Analyze sentiment of a single text using ML-based sentiment analysis
         
         Args:
             text: Input text
@@ -92,7 +104,47 @@ class SentimentAnalyzer:
         Returns:
             Dictionary with sentiment analysis results
         """
-        # Simple rule-based sentiment for demo
+        if not text or not text.strip():
+            return {
+                "sentiment": "neutral",
+                "score": 0.0,
+                "confidence": 0.0,
+                "positive_words": 0,
+                "negative_words": 0
+            }
+        
+        # Use ML-based sentiment pipeline if available
+        if self.sentiment_pipeline is not None:
+            try:
+                result = self.sentiment_pipeline(text)[0]
+                label = result['label']  # 'POSITIVE' or 'NEGATIVE'
+                score = result['score']
+                
+                # Convert to our format
+                if label == "POSITIVE":
+                    sentiment = "positive"
+                    sentiment_score = score
+                else:
+                    sentiment = "negative"
+                    sentiment_score = -score
+                
+                # Determine if neutral (very low confidence)
+                if score < 0.6:
+                    sentiment = "neutral"
+                    sentiment_score = 0.0
+                
+                return {
+                    "sentiment": sentiment,
+                    "score": sentiment_score,
+                    "confidence": score,
+                    "positive_words": 1 if label == "POSITIVE" else 0,
+                    "negative_words": 1 if label == "NEGATIVE" else 0
+                }
+            except Exception as e:
+                logger.warning(f"Sentiment pipeline failed: {e}, falling back to keyword-based")
+                # Fall through to keyword-based
+        
+        # Fallback to keyword-based sentiment if pipeline fails
         text_lower = text.lower()
         
         positive_words = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 
@@ -217,22 +269,83 @@ class EmotionDetector:
     
     def detect_emotion(self, audio_features: Dict) -> Dict:
         """
-        Detect emotion from audio features
+        Detect emotion from audio features using acoustic characteristics
         
         Args:
-            audio_features: Dictionary of audio features
+            audio_features: Dictionary of audio features (MFCC, spectral_centroid, etc.)
             
         Returns:
             Dictionary with emotion detection results
         """
-        # For demo purposes, simulate emotion detection
-        return self._demo_emotion_detection(audio_features)
+        if not audio_features:
+            return self._demo_emotion_detection(audio_features)
     
-    def _demo_emotion_detection(self, audio_features: Dict) -> Dict:
-        """Demo emotion detection"""
-        # Simulate emotion probabilities
+        # Extract key features for emotion detection
+        mfcc = audio_features.get('mfcc', None)
+        spectral_centroid = audio_features.get('spectral_centroid', None)
+        zero_crossing_rate = audio_features.get('zero_crossing_rate', None)
+        
+        # Initialize base probabilities
         emotions = self.emotion_labels
-        probabilities = np.random.dirichlet(np.ones(len(emotions)))
+        probabilities = np.ones(len(emotions)) * 0.1  # Start with neutral base
+        
+        try:
+            # Analyze spectral centroid (pitch indicator)
+            if spectral_centroid is not None:
+                sc_mean = np.mean(spectral_centroid) if hasattr(spectral_centroid, 'mean') else np.mean(spectral_centroid)
+                sc_std = np.std(spectral_centroid) if hasattr(spectral_centroid, 'std') else np.std(spectral_centroid)
+                
+                # High pitch + high variability → happy, excited
+                if sc_mean > 2000 and sc_std > 500:
+                    probabilities[1] += 0.4  # happy
+                    probabilities[6] += 0.2  # surprised
+                # Low pitch + low variability → sad, neutral
+                elif sc_mean < 1000 and sc_std < 300:
+                    probabilities[2] += 0.4  # sad
+                    probabilities[0] += 0.3  # neutral
+                # Medium pitch + high variability → angry, frustrated
+                elif 1000 <= sc_mean <= 2000 and sc_std > 500:
+                    probabilities[3] += 0.5  # angry
+                    probabilities[4] += 0.2  # fearful
+                # Stable medium pitch → neutral
+                else:
+                    probabilities[0] += 0.5  # neutral
+            
+            # Analyze MFCC features (speech quality)
+            if mfcc is not None:
+                mfcc_mean = np.mean(mfcc) if hasattr(mfcc, 'mean') else np.mean(mfcc)
+                mfcc_std = np.std(mfcc) if hasattr(mfcc, 'std') else np.std(mfcc)
+                
+                # High MFCC variance → emotional (happy, angry, surprised)
+                if mfcc_std > 5:
+                    probabilities[1] += 0.2  # happy
+                    probabilities[3] += 0.2  # angry
+                # Low MFCC variance → neutral, sad
+                else:
+                    probabilities[0] += 0.2  # neutral
+                    probabilities[2] += 0.2  # sad
+            
+            # Analyze zero crossing rate (voice activity)
+            if zero_crossing_rate is not None:
+                zcr_mean = np.mean(zero_crossing_rate) if hasattr(zero_crossing_rate, 'mean') else np.mean(zero_crossing_rate)
+                
+                # High ZCR → energetic emotions (happy, angry)
+                if zcr_mean > 0.1:
+                    probabilities[1] += 0.15  # happy
+                    probabilities[3] += 0.15  # angry
+                # Low ZCR → calm emotions (neutral, sad)
+                else:
+                    probabilities[0] += 0.15  # neutral
+                    probabilities[2] += 0.15  # sad
+            
+            # Normalize probabilities
+            probabilities = np.maximum(probabilities, 0)  # Ensure non-negative
+            probabilities = probabilities / np.sum(probabilities)  # Normalize
+            
+        except Exception as e:
+            logger.warning(f"Error in emotion detection from audio features: {e}")
+            # Fallback to uniform distribution
+            probabilities = np.ones(len(emotions)) / len(emotions)
         
         # Find dominant emotion
         dominant_emotion_idx = np.argmax(probabilities)
@@ -242,6 +355,20 @@ class EmotionDetector:
         return {
             "emotion": dominant_emotion,
             "confidence": confidence,
+            "probabilities": dict(zip(emotions, probabilities))
+        }
+    
+    def _demo_emotion_detection(self, audio_features: Dict) -> Dict:
+        """Fallback emotion detection when audio features are not available"""
+        # Return neutral emotion as default
+        emotions = self.emotion_labels
+        probabilities = np.ones(len(emotions)) / len(emotions)
+        probabilities[0] = 0.5  # Favor neutral
+        
+        dominant_emotion_idx = 0  # neutral
+        return {
+            "emotion": emotions[dominant_emotion_idx],
+            "confidence": probabilities[dominant_emotion_idx],
             "probabilities": dict(zip(emotions, probabilities))
         }
     
@@ -320,7 +447,9 @@ class SalePredictor:
             # In a real implementation, you would train the LSTM here
             logger.info("LSTM model created (demo mode - not trained)")
         
-        self.is_trained = True
+        # Model is trained with synthetic data, but use demo prediction for variable feature sizes
+        # Set to False to use demo prediction which handles any feature size
+        self.is_trained = False  # Use demo prediction to handle variable feature sizes
         logger.info(f"Sale prediction model trained using {model_type}")
     
     def _create_lstm_model(self, input_dim: int) -> nn.Module:
@@ -353,8 +482,19 @@ class SalePredictor:
             Dictionary with prediction results
         """
         if not self.is_trained:
-            # Demo prediction
+            # Demo prediction (handles variable feature sizes)
             return self._demo_prediction(features)
+        
+        # Handle feature shape mismatch - pad or truncate to expected size
+        expected_features = 50
+        if len(features) != expected_features:
+            if len(features) > expected_features:
+                # Truncate to first 50 features
+                features = features[:expected_features]
+            else:
+                # Pad with zeros
+                padding = np.zeros(expected_features - len(features))
+                features = np.concatenate([features, padding])
         
         if self.model_type == "xgboost":
             probability = self.model.predict_proba(features.reshape(1, -1))[0][1]
@@ -370,16 +510,54 @@ class SalePredictor:
         }
     
     def _demo_prediction(self, features: np.ndarray) -> Dict:
-        """Demo sale prediction"""
-        # Simulate prediction based on feature characteristics
-        # Higher values in certain features indicate higher sale probability
-        demo_probability = np.random.uniform(0.1, 0.9)
+        """Heuristic-based sale prediction using real features"""
+        if len(features) == 0:
+            demo_probability = 0.5
+        else:
+            # Use heuristics based on feature characteristics
+            # Assume features are in order: sentiment scores, emotion scores, conversation metrics
+            
+            # Normalize features to [-1, 1] range if needed
+            if np.max(np.abs(features)) > 1:
+                features_normalized = np.tanh(features / np.max(np.abs(features)))
+            else:
+                features_normalized = features
+            
+            # Heuristic: positive sentiment features → higher sale probability
+            # Average of positive features (assuming first few are sentiment-related)
+            num_features = len(features_normalized)
+            sentiment_weight = 0.4  # Weight for sentiment features
+            emotion_weight = 0.3     # Weight for emotion features
+            temporal_weight = 0.3   # Weight for temporal features
+            
+            # Estimate sentiment contribution (first 30% of features)
+            sentiment_idx = int(num_features * 0.3)
+            sentiment_score = np.mean(features_normalized[:sentiment_idx]) if sentiment_idx > 0 else 0
+            
+            # Estimate emotion contribution (next 30% of features)
+            emotion_idx = int(num_features * 0.6)
+            emotion_score = np.mean(features_normalized[sentiment_idx:emotion_idx]) if emotion_idx > sentiment_idx else 0
+            
+            # Temporal features (remaining features)
+            temporal_score = np.mean(features_normalized[emotion_idx:]) if num_features > emotion_idx else 0
+            
+            # Combine weighted scores
+            combined_score = (
+                sentiment_weight * sentiment_score +
+                emotion_weight * emotion_score +
+                temporal_weight * temporal_score
+            )
+            
+            # Map to probability [0, 1]
+            # Positive combined score → higher probability, negative → lower
+            demo_probability = 0.5 + (combined_score * 0.4)  # Base 50% ± 40%
+            demo_probability = np.clip(demo_probability, 0.1, 0.9)  # Clamp between 10% and 90%
         
         return {
-            "sale_probability": demo_probability,
+            "sale_probability": float(demo_probability),
             "prediction": "sale" if demo_probability > 0.5 else "no_sale",
             "confidence": abs(demo_probability - 0.5) * 2,
-            "feature_importance": np.random.rand(features.shape[0]).tolist() if len(features) > 0 else None
+            "feature_importance": np.ones(len(features)).tolist() if len(features) > 0 else None
         }
     
     def get_feature_importance(self) -> Dict:

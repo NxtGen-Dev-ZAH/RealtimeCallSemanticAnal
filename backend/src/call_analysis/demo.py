@@ -136,7 +136,12 @@ class DemoSystem:
                 # Full pipeline: Preprocess audio -> Extract features -> Analyze
                 transcription = self.audio_processor.transcribe_audio(conv['audio_path'], conv['id'])
                 segments = self.audio_processor.perform_speaker_diarization(conv['audio_path'], conv['id'])
-                processed_segments = self.text_processor.segment_conversation(transcription['text'], segments, conv['id'])
+                processed_segments = self.text_processor.segment_conversation(
+                    transcription['text'],
+                    segments,
+                    conv['id'],
+                    transcription_segments=transcription.get('segments', [])
+                )
                 audio_features = self.audio_processor.extract_audio_features(conv['audio_path'])
                 
                 feature_data = [{'audio_features': audio_features, 'text_features': {'text': transcription['text']}, 'segments': processed_segments}]
@@ -253,7 +258,12 @@ class DemoSystem:
                 # Full pipeline (as in run_demo)
                 transcription = self.audio_processor.transcribe_audio(conv['audio_path'], conv['id'])
                 segments = self.audio_processor.perform_speaker_diarization(conv['audio_path'], conv['id'])
-                processed_segments = self.text_processor.segment_conversation(transcription['text'], segments, conv['id'])
+                processed_segments = self.text_processor.segment_conversation(
+                    transcription['text'],
+                    segments,
+                    conv['id'],
+                    transcription_segments=transcription.get('segments', [])
+                )
                 audio_features = self.audio_processor.extract_audio_features(conv['audio_path'])
                 
                 feature_data = [{'audio_features': audio_features, 'text_features': {'text': transcription['text']}, 'segments': processed_segments}]

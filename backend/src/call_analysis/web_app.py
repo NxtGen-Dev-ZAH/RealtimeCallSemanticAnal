@@ -166,7 +166,12 @@ def upload_audio():
         call_id = f"upload_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         transcription = demo_system.audio_processor.transcribe_audio(audio_path, call_id)
         segments = demo_system.audio_processor.perform_speaker_diarization(audio_path, call_id)
-        processed_segments = demo_system.text_processor.segment_conversation(transcription['text'], segments, call_id)
+        processed_segments = demo_system.text_processor.segment_conversation(
+            transcription['text'],
+            segments,
+            call_id,
+            transcription_segments=transcription.get('segments', [])
+        )
         audio_features = demo_system.audio_processor.extract_audio_features(audio_path)
         
         feature_data = [{'audio_features': audio_features, 'text_features': {'text': transcription['text']}, 'segments': processed_segments}]
