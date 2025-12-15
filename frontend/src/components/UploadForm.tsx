@@ -4,10 +4,11 @@ import { useState, useRef } from 'react';
 import { Upload, FileAudio, X, Cloud, Sparkles } from 'lucide-react';
 import { apiService } from '@/lib/api';
 import toast from 'react-hot-toast';
+import type { UploadResponse } from '@/lib/types';
 
 interface UploadFormProps {
-  onUploadSuccess: (fileData: any) => void;
-  onUploadError: (error: any) => void;
+  onUploadSuccess: (fileData: UploadResponse) => void;
+  onUploadError: (error: Error) => void;
   disabled?: boolean;
 }
 
@@ -53,7 +54,7 @@ const UploadForm = ({ onUploadSuccess, onUploadError, disabled }: UploadFormProp
         size: selectedFile.size,
       });
     } catch (error: any) {
-      onUploadError(error);
+      onUploadError(error instanceof Error ? error : new Error('Upload failed'));
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -79,7 +80,7 @@ const UploadForm = ({ onUploadSuccess, onUploadError, disabled }: UploadFormProp
     <div className="space-y-6">
       {/* File Input */}
       <div className="relative group">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-900/30 to-black/30 rounded-2xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
         <div className="relative border-2 border-dashed border-white/30 rounded-2xl p-8 text-center hover:border-white/50 transition-all duration-300 bg-white/5 backdrop-blur-sm">
           <input
             ref={fileInputRef}
@@ -96,8 +97,8 @@ const UploadForm = ({ onUploadSuccess, onUploadError, disabled }: UploadFormProp
               className="cursor-pointer group/upload"
             >
               <div className="relative w-20 h-20 mx-auto mb-6">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl blur opacity-30 group-hover/upload:opacity-50 transition-opacity duration-300"></div>
-                <div className="relative w-full h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl flex items-center justify-center group-hover/upload:scale-110 transition-transform duration-300">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-900 to-slate-950 rounded-2xl blur opacity-30 group-hover/upload:opacity-50 transition-opacity duration-300"></div>
+                <div className="relative w-full h-full bg-gradient-to-r from-blue-900 to-slate-950 rounded-2xl flex items-center justify-center group-hover/upload:scale-110 transition-transform duration-300">
                   <Cloud className="h-10 w-10 text-white" />
                 </div>
               </div>
@@ -142,7 +143,7 @@ const UploadForm = ({ onUploadSuccess, onUploadError, disabled }: UploadFormProp
         <button
           onClick={handleUpload}
           disabled={disabled || isUploading}
-          className="group relative w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold py-4 px-6 rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
+          className="group relative w-full bg-gradient-to-r from-blue-900 to-slate-950 hover:from-black hover:to-slate-900 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold py-4 px-6 rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
         >
           <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
           <span className="relative flex items-center justify-center space-x-2">
@@ -170,7 +171,7 @@ const UploadForm = ({ onUploadSuccess, onUploadError, disabled }: UploadFormProp
           </div>
           <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden">
             <div
-              className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all duration-500 ease-out"
+              className="bg-gradient-to-r from-blue-900 to-slate-950 h-3 rounded-full transition-all duration-500 ease-out"
               style={{ width: `${uploadProgress}%` }}
             ></div>
           </div>

@@ -14,8 +14,8 @@ backend_dir = os.path.dirname(script_dir)
 src_dir = os.path.join(backend_dir, 'src')
 sys.path.insert(0, src_dir)
 
-from dotenv import load_dotenv
-from call_analysis.preprocessing import AudioProcessor
+from dotenv import load_dotenv  # type: ignore[import]
+from src.call_analysis.preprocessing import AudioProcessor
 
 # Load environment variables
 load_dotenv()
@@ -172,35 +172,21 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     backend_dir = os.path.dirname(script_dir)
     project_root = os.path.dirname(backend_dir)
-    
-    # Default to real_audio.wav in project root
-    audio_file = os.path.join(project_root, "real_audio.wav")
-    
-    # Check if file exists
-    if not os.path.exists(audio_file):
-        # Try just the filename in project root
-        filename = "real_audio.wav"
-        audio_file = os.path.join(project_root, filename)
-        if not os.path.exists(audio_file):
-            print("❌ Error: real_audio.wav not found in project root")
-            print()
-            print("Usage:")
-            print("  python transcribe_audio.py")
-            print("  OR")
-            print("  python transcribe_audio.py path/to/audio.wav")
-            print()
-            sys.exit(1)
-    
-    # Check for command line argument
+
+    # Determine audio file:
+    # 1) If a CLI argument is provided, use that (with smart resolution)
+    # 2) Otherwise, fall back to the default real_audio.wav in the project root
     if len(sys.argv) > 1:
         audio_file = sys.argv[1]
-        # If relative path, make it absolute or relative to project root
+        # If relative path, try resolving relative to project root first
         if not os.path.isabs(audio_file):
-            # Try relative to project root first
             test_path = os.path.join(project_root, audio_file)
             if os.path.exists(test_path):
                 audio_file = test_path
-            # Otherwise use as-is (relative to current working directory)
+            # Otherwise, leave as-is (relative to current working directory)
+    else:
+        # Default to real_audio.wav in project root
+        audio_file = os.path.join(project_root, "real_audio.wav")
     
     # Optional: specify model size as second argument
     model_size = "base"

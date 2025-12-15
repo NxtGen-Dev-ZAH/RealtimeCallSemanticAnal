@@ -1,26 +1,29 @@
-'use client';
+ 'use client';
 
 import { useState } from 'react';
 import UploadForm from '@/components/UploadForm';
 import AnalysisDashboard from '@/components/AnalysisDashboard';
+import { HistorySection } from '@/components/HistorySection';
+import { AboutSection } from '@/components/AboutSection';
 import { apiService } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Mic, Brain, TrendingUp, Shield, Zap, Sparkles } from 'lucide-react';
+import type { UploadResponse, StatusResponse, CallResults } from '@/lib/types';
 
 export default function Home() {
-  const [uploadedFile, setUploadedFile] = useState(null);
-  const [analysisResults, setAnalysisResults] = useState(null);
+  const [uploadedFile, setUploadedFile] = useState<UploadResponse | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<CallResults | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisStatus, setAnalysisStatus] = useState(null);
+  const [analysisStatus, setAnalysisStatus] = useState<StatusResponse | null>(null);
 
-  const handleUploadSuccess = (fileData: any) => {
+  const handleUploadSuccess = (fileData: UploadResponse) => {
     setUploadedFile(fileData);
     setAnalysisResults(null);
     setAnalysisStatus(null);
     toast.success('File uploaded successfully!');
   };
 
-  const handleUploadError = (error: any) => {
+  const handleUploadError = (error: Error) => {
     toast.error(`Upload failed: ${error.message}`);
   };
 
@@ -31,7 +34,7 @@ export default function Home() {
     }
 
     setIsAnalyzing(true);
-    setAnalysisStatus({ status: 'processing', progress: 0 });
+    setAnalysisStatus({ status: 'processing', progress: 0, call_id: uploadedFile.call_id });
 
     try {
       // Start analysis
@@ -82,23 +85,23 @@ export default function Home() {
   };
 
   return (
-    <div className="pt-20">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-600/20 to-pink-600/20 blur-3xl"></div>
+    <div>
+      {/* Home Section */}
+      <section id="home" className="pt-20 scroll-mt-24">
+        {/* Hero Section */}  
+        <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-900/40 to-black/40 blur-3xl"></div>
+        </div>
         <div className="relative container mx-auto px-6 py-20 text-center">
           <div className="max-w-4xl mx-auto">
-            <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 mb-8">
-              <Sparkles className="h-4 w-4 text-yellow-400" />
-              <span className="text-white/90 text-sm font-medium">AI-Powered Conversation Intelligence</span>
-            </div>
+
             
             <h1 className="text-5xl md:text-7xl font-bold mb-6">
-              <span className="bg-gradient-to-r from-white via-purple-200 to-pink-200 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-white via-blue-200 to-blue-200 bg-clip-text text-transparent">
                 Call Analysis
               </span>
               <br />
-              <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-blue-200 to-blue-300 bg-clip-text text-transparent">
                 Revolution
               </span>
             </h1>
@@ -111,7 +114,7 @@ export default function Home() {
             {/* Feature Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
               <div className="group bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6 hover:bg-white/15 transition-all duration-300">
-                <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform duration-300">
+                <div className="w-12 h-12 bg-gradient-to-r from-blue-900 to-slate-950 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform duration-300">
                   <Mic className="h-6 w-6 text-white" />
                 </div>
                 <h3 className="text-white font-semibold mb-2">Speech Recognition</h3>
@@ -119,7 +122,7 @@ export default function Home() {
               </div>
               
               <div className="group bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6 hover:bg-white/15 transition-all duration-300">
-                <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform duration-300">
+                <div className="w-12 h-12 bg-gradient-to-r from-blue-900 to-blue-900 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform duration-300">
                   <Brain className="h-6 w-6 text-white" />
                 </div>
                 <h3 className="text-white font-semibold mb-2">Sentiment Analysis</h3>
@@ -127,7 +130,7 @@ export default function Home() {
               </div>
               
               <div className="group bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6 hover:bg-white/15 transition-all duration-300">
-                <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform duration-300">
+                <div className="w-12 h-12 bg-gradient-to-r from-blue-900 to-slate-900 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform duration-300">
                   <TrendingUp className="h-6 w-6 text-white" />
                 </div>
                 <h3 className="text-white font-semibold mb-2">Sales Prediction</h3>
@@ -136,17 +139,18 @@ export default function Home() {
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Main Content */}
-      <div className="container mx-auto px-6 pb-20">
-        <div className="space-y-12">
+      {/* Main Content / Analyze Section */}
+      <section id="analyze" className="scroll-mt-24">
+        <div className="container mx-auto px-6 pb-20">
+          <div className="space-y-12">
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Upload Section */}
             <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-3xl p-8">
               <div className="flex items-center space-x-3 mb-6">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center">
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-900 to-slate-900 rounded-xl flex items-center justify-center">
                   <Mic className="h-5 w-5 text-white" />
                 </div>
                 <h2 className="text-2xl font-bold text-white">
@@ -180,7 +184,7 @@ export default function Home() {
             {/* Analysis Section */}
             <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-3xl p-8">
               <div className="flex items-center space-x-3 mb-6">
-                <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-900 to-blue-900 rounded-xl flex items-center justify-center">
                   <Zap className="h-5 w-5 text-white" />
                 </div>
                 <h2 className="text-2xl font-bold text-white">
@@ -200,7 +204,7 @@ export default function Home() {
                   <button
                     onClick={handleAnalyze}
                     disabled={isAnalyzing}
-                    className="group relative w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold py-4 px-6 rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
+                    className="group relative w-full bg-gradient-to-r from-blue-900 to-slate-950 hover:from-black hover:to-slate-900 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold py-4 px-6 rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     <span className="relative flex items-center justify-center space-x-2">
@@ -218,10 +222,10 @@ export default function Home() {
                     </span>
                   </button>
 
-                  {analysisStatus && (
-                    <div className="p-6 bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 rounded-2xl">
+                    {analysisStatus && (
+                    <div className="p-6 bg-blue-900/30 backdrop-blur-sm border border-blue-800/40 rounded-2xl">
                       <div className="flex items-center space-x-2 mb-3">
-                        <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                        <div className="w-6 h-6 bg-blue-900 rounded-full flex items-center justify-center">
                           <Brain className="h-3 w-3 text-white" />
                         </div>
                         <h3 className="font-semibold text-blue-200">Analysis Status</h3>
@@ -231,9 +235,9 @@ export default function Home() {
                       </p>
                       {analysisStatus.progress !== undefined && (
                         <div className="space-y-2">
-                          <div className="w-full bg-blue-900/30 rounded-full h-3 overflow-hidden">
+                          <div className="w-full bg-blue-900/40 rounded-full h-3 overflow-hidden">
                             <div 
-                              className="bg-gradient-to-r from-blue-500 to-cyan-500 h-3 rounded-full transition-all duration-500 ease-out"
+                              className="bg-gradient-to-r from-blue-800 to-slate-900 h-3 rounded-full transition-all duration-500 ease-out"
                               style={{ width: `${analysisStatus.progress}%` }}
                             ></div>
                           </div>
@@ -256,22 +260,44 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Results Section */}
-          {analysisResults && (
-            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-3xl p-8">
-              <div className="flex items-center space-x-3 mb-8">
-                <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
-                  <TrendingUp className="h-5 w-5 text-white" />
+          {/* Results Section (scroll target) */}
+          <section id="results" className="scroll-mt-24">
+            {analysisResults && (
+              <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-3xl p-8">
+                <div className="flex items-center space-x-3 mb-8">
+                  <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
+                    <TrendingUp className="h-5 w-5 text-white" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-white">
+                    Analysis Results
+                  </h2>
                 </div>
-                <h2 className="text-2xl font-bold text-white">
-                  Analysis Results
-                </h2>
+                <AnalysisDashboard results={analysisResults} />
               </div>
-              <AnalysisDashboard results={analysisResults} />
-            </div>
-          )}
+            )}
+            {!analysisResults && (
+              <div className="bg-white/5 backdrop-blur-sm border border-dashed border-white/20 rounded-3xl p-8 text-center text-white/70">
+                Run an analysis to see detailed results here.
+              </div>
+            )}
+          </section>
         </div>
-      </div>
+        </div>
+      </section>
+
+      {/* History Section */}
+      <section id="history" className="scroll-mt-24 py-20">
+        <div className="container mx-auto px-6">
+          <HistorySection />
+        </div>
+      </section>
+
+      {/* About Section */}
+      <section id="about" className="scroll-mt-24 py-20">
+        <div className="container mx-auto px-6">
+          <AboutSection />
+        </div>
+      </section>
     </div>
   );
 }

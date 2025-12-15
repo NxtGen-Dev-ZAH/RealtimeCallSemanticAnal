@@ -21,7 +21,7 @@ const EmotionChart = ({ data }: EmotionChartProps) => {
     sad: '#3b82f6',
     angry: '#ef4444',
     fearful: '#f59e0b',
-    surprised: '#8b5cf6',
+    surprised: '#1e40af',
     disgusted: '#10b981',
   };
 

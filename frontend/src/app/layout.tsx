@@ -17,17 +17,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body className={inter.className}>
-        <div className="min-h-screen relative bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+        <div className="min-h-screen relative bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
           {/* Decorative gradient overlay (removed problematic inline SVG to avoid JSX parse errors) */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-purple-900/20 via-transparent to-slate-900/20"></div>
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-blue-900/20 via-transparent to-slate-900/20"></div>
           <Navbar />
           <main className="relative z-10">
             {children}
           </main>
           <Toaster 
-            position="top-right"
+            position="bottom-right"
             toastOptions={{
               duration: 4000,
               style: {

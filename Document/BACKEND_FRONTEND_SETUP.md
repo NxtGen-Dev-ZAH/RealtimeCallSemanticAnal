@@ -409,7 +409,7 @@ FLASK_PORT=5001
 mongosh  # or mongo
 
 # Or use MongoDB Atlas connection string
-MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/
+MONGODB_URI=
 ```
 
 **Problem: Module not found errors**
@@ -424,6 +424,10 @@ uv sync
 source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 uv pip install -e .
 ```
+
+mongodb+srv:
+
+//user:pass@cluster.mongodb.net/
 
 ### Frontend Issues
 

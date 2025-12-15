@@ -6,8 +6,15 @@ Run the Call Analysis System Web Application
 import sys
 import os
 
-# Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+# Ensure both backend package root and src/ are on sys.path
+BACKEND_DIR = os.path.dirname(__file__)
+SRC_DIR = os.path.join(BACKEND_DIR, "src")
+
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
+
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
 
 from config import Config  # type: ignore
 

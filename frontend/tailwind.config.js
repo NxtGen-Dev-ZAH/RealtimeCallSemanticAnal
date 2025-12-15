@@ -1,23 +1,25 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+    './src/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
+        // Semantic colors backed by CSS variables (see globals.css)
+        background: {
+          DEFAULT: 'var(--bg-base)',
+          muted: 'var(--bg-elevated)',
+        },
+        foreground: {
+          DEFAULT: 'var(--text-primary)',
+          muted: 'var(--text-secondary)',
+        },
+        border: 'var(--border-color)',
+        accent: {
+          DEFAULT: 'var(--accent-primary)',
+          hover: 'var(--accent-primary-hover)',
         },
         success: {
           50: '#f0fdf4',
@@ -30,6 +32,7 @@ export default {
           700: '#15803d',
           800: '#166534',
           900: '#14532d',
+          DEFAULT: '#22c55e',
         },
         warning: {
           50: '#fffbeb',
@@ -42,6 +45,7 @@ export default {
           700: '#b45309',
           800: '#92400e',
           900: '#78350f',
+          DEFAULT: '#f59e0b',
         },
         danger: {
           50: '#fef2f2',
@@ -54,9 +58,37 @@ export default {
           700: '#b91c1c',
           800: '#991b1b',
           900: '#7f1d1d',
-        }
-      }
+          DEFAULT: '#ef4444',
+        },
+        // Primary brand color – deep, dark blue
+        primary: {
+          50: '#e0f2fe',
+          100: '#bae6fd',
+          200: '#7dd3fc',
+          300: '#38bdf8',
+          400: '#0ea5e9',
+          500: '#1d4ed8',
+          600: '#1e40af',
+          700: '#1e3a8a',
+          800: '#020617',
+          900: '#000000',
+          DEFAULT: '#1e40af',
+        },
+      },
+      borderRadius: {
+        lg: 'var(--radius-lg)',
+        xl: 'var(--radius-xl)',
+        '2xl': '1.5rem',
+      },
+      transitionDuration: {
+        fast: 'var(--duration-fast)',
+        base: 'var(--duration-base)',
+      },
+      transitionTimingFunction: {
+        standard: 'var(--ease-standard)',
+      },
     },
   },
   plugins: [],
-}
+};
+

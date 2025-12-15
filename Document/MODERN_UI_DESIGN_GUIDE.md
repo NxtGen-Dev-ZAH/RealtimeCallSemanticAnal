@@ -402,7 +402,7 @@ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
 - **Inverse Text:** Dark text on light surfaces (for light mode compatibility)
 
 #### **Accent Colors:**
-- **Primary:** Brand color (e.g., #8B5CF6 purple, #06B6D4 cyan)
+- **Primary:** Brand color (e.g., #8B5CF6 blue, #06B6D4 cyan)
 - **Secondary:** Complementary accent
 - **Success:** Green (#22C55E, #10B981)
 - **Warning:** Orange/Amber (#F59E0B, #FBBF24)

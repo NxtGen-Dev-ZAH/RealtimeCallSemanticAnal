@@ -9,7 +9,8 @@ Create a `.env` file in the backend directory with the following variables:
 HF_TOKEN=your_huggingface_token_here
 
 # Database Configuration
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+MONGODB_URI=
+# mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 MONGODB_DATABASE=call_center_db
 
 # Flask Configuration
