@@ -39,7 +39,14 @@ class DemoSystem:
         """Initialize demo system."""
         self.analyzer = ConversationAnalyzer()
         self.dashboard = Dashboard()
-        self.audio_processor = AudioProcessor(hf_token=hf_token)
+        from config import Config
+        self.audio_processor = AudioProcessor(
+            hf_token=hf_token,
+            use_llm_diarization=Config.USE_LLM_DIARIZATION,
+            llm_role_model=Config.LLM_ROLE_IDENTIFICATION_MODEL,
+            llm_refinement_model=Config.LLM_REFINEMENT_MODEL,
+            llm_device=Config.LLM_DEVICE
+        )
         self.text_processor = TextProcessor()
         self.feature_extractor = FeatureExtractor()
         

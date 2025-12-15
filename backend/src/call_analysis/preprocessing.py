@@ -19,7 +19,13 @@ from jiwer import wer
 import spacy
 from pymongo import MongoClient
 from datetime import datetime
-from transformers import BertTokenizer
+from transformers import (
+    BertTokenizer,
+    pipeline,
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
+    AutoModelForSeq2SeqLM,
+)
 import warnings
 
 # Suppress torchaudio deprecation warnings (they're harmless but noisy)
@@ -73,10 +79,25 @@ except OSError:
 class AudioProcessor:
     """Handles audio preprocessing including transcription and speaker diarization."""
     
-    def __init__(self, model_size: str = "base", hf_token: str = None, use_whisperx: bool = True, 
-                 chunk_duration: float = 300.0, enable_chunking: bool = True,
-                 max_speakers: int = None, clustering_threshold: float = 0.3, min_segment_duration: float = 1.0,
-                 speaker_merge_threshold: float = 0.7, use_whisperx_builtin_diarization: bool = False):
+    def __init__(
+        self,
+        model_size: str = "base",
+        hf_token: str = None,
+        use_whisperx: bool = True,
+        chunk_duration: float = 300.0,
+        enable_chunking: bool = True,
+        max_speakers: int = None,
+        clustering_threshold: float = 0.3,
+        min_segment_duration: float = 1.0,
+        speaker_merge_threshold: float = 0.7,
+        use_whisperx_builtin_diarization: bool = False,
+        use_llm_diarization: bool = True,
+        llm_role_model: str = None,
+        llm_refinement_model: str = None,
+        llm_device: str = "cpu",
+        min_speakers: int = 2,
+        cross_chunk_similarity_threshold: float = 0.85,
+    ):
         """
         Initialize audio processor.
         
@@ -92,6 +113,10 @@ class AudioProcessor:
             min_segment_duration: Minimum segment duration in seconds for reliable embeddings (default: 1.0).
             use_whisperx_builtin_diarization: Use WhisperX 3.x built-in diarization (Pyannote.audio) instead of Resemblyzer.
                                              More accurate but slower. Requires HF_TOKEN.
+            use_llm_diarization: Enable LLM-enhanced diarization (role identification and refinement).
+            llm_role_model: Hugging Face model for role identification (default: facebook/bart-large-mnli).
+            llm_refinement_model: Hugging Face model for post-processing refinement (default: distilgpt2).
+            llm_device: Device for LLM models ('cpu' or 'cuda').
         """
         self.model_size = model_size
         self.hf_token = hf_token
@@ -114,9 +139,19 @@ class AudioProcessor:
         self.whisperx_diarize_model = None  # WhisperX 3.x built-in diarization model
         self.target_sample_rate = 16000
         self.speaker_merge_threshold = speaker_merge_threshold
+        self.min_speakers = min_speakers
+        self.cross_chunk_similarity_threshold = cross_chunk_similarity_threshold
         self.mongo_enabled = MONGO_ENABLED
         self.mongo_uri = MONGO_URI
         self.mongo_db = MONGO_DB_NAME
+        
+        # LLM configuration
+        self.use_llm_diarization = use_llm_diarization
+        self.llm_role_model_name = llm_role_model or 'facebook/bart-large-mnli'
+        self.llm_refinement_model_name = llm_refinement_model or 'distilgpt2'
+        self.llm_device = llm_device
+        self.llm_role_classifier = None
+        self.llm_refinement_model = None
         self._load_models()
     
     def _load_models(self):
@@ -180,6 +215,49 @@ class AudioProcessor:
                 logger.warning(f"Pyannote model loading failed: {e}")
                 logger.warning("Speaker diarization will not be available, but transcription will still work")
                 self.diarization_pipeline = None
+        
+        # Load LLM models for diarization enhancement (optional)
+        if self.use_llm_diarization:
+            try:
+                logger.info("Loading LLM models for diarization enhancement...")
+                # Load zero-shot classification model for role identification
+                try:
+                    logger.info(f"Loading role identification model: {self.llm_role_model_name}")
+                    self.llm_role_classifier = pipeline(
+                        "zero-shot-classification",
+                        model=self.llm_role_model_name,
+                        device=-1 if self.llm_device == 'cpu' else 0
+                    )
+                    logger.info("✅ LLM role identification model loaded")
+                except Exception as e:
+                    logger.warning(f"Failed to load LLM role identification model: {e}")
+                    logger.warning("Falling back to heuristic-based role identification")
+                    self.llm_role_classifier = None
+                
+                # Load text generation model for refinement (optional, can be None)
+                try:
+                    logger.info(f"Loading refinement model: {self.llm_refinement_model_name}")
+                    # FLAN-T5 and similar encoder-decoder models are seq2seq, not causal LMs
+                    self.llm_refinement_model = AutoModelForSeq2SeqLM.from_pretrained(
+                        self.llm_refinement_model_name
+                    )
+                    self.llm_refinement_tokenizer = AutoTokenizer.from_pretrained(
+                        self.llm_refinement_model_name
+                    )
+                    if self.llm_refinement_tokenizer.pad_token is None:
+                        self.llm_refinement_tokenizer.pad_token = self.llm_refinement_tokenizer.eos_token
+                    logger.info("✅ LLM refinement model loaded")
+                except Exception as e:
+                    logger.warning(f"Failed to load LLM refinement model: {e}")
+                    logger.warning("Refinement will use rule-based approach")
+                    self.llm_refinement_model = None
+                    self.llm_refinement_tokenizer = None
+            except Exception as e:
+                logger.warning(f"LLM diarization enhancement setup failed: {e}")
+                logger.warning("Continuing with standard diarization (heuristic-based)")
+                self.use_llm_diarization = False
+                self.llm_role_classifier = None
+                self.llm_refinement_model = None
     
     def validate_audio_format(self, audio_path: str) -> str:
         """
@@ -597,7 +675,17 @@ class AudioProcessor:
                 
                 # PRODUCTION FIX 4: Post-process to merge very similar clusters
                 cluster_labels = self._merge_similar_speakers(
-                    segment_embeddings, cluster_labels, similarity_threshold=self.speaker_merge_threshold
+                    segment_embeddings,
+                    cluster_labels,
+                    similarity_threshold=self.speaker_merge_threshold,
+                    min_speakers=self.min_speakers,
+                )
+                # PRODUCTION FIX 4: Post-process to merge very similar clusters
+                cluster_labels = self._merge_similar_speakers(
+                    segment_embeddings,
+                    cluster_labels,
+                    similarity_threshold=self.speaker_merge_threshold,
+                    min_speakers=self.min_speakers,
                 )
                 num_clusters = len(set(cluster_labels))
                 
@@ -636,8 +724,14 @@ class AudioProcessor:
                 logger.info(f"   After mapping: {segments_with_text}/{len(segments)} segments have text")
             
             # Step 6b: Identify customer vs agent roles (for call centers)
-            # Segments have text, so role identification can use keyword analysis
-            segments = self._identify_speaker_roles(segments, transcription_segments=transcription_segments)
+            # Use LLM-enhanced identification if available, otherwise use heuristics
+            if self.use_llm_diarization and self.llm_role_classifier:
+                segments = self._identify_speaker_roles_with_llm(segments, transcription_segments=transcription_segments)
+            else:
+                segments = self._identify_speaker_roles(segments, transcription_segments=transcription_segments)
+            
+            # Step 6c: LLM post-processing refinement
+            segments = self._refine_diarization_with_llm(segments)
             
             # Save to database if available
             try:
@@ -806,7 +900,14 @@ class AudioProcessor:
                     # Skip to Step 7 (role identification) - we'll do text mapping there
                     logger.info(f"Converted {len(segments)} segments from DataFrame")
                     # Continue to role identification
-                    segments = self._identify_speaker_roles(segments, transcription_segments=transcription_segments)
+                    # Use LLM-enhanced identification if available, otherwise use heuristics
+                    if self.use_llm_diarization and self.llm_role_classifier:
+                        segments = self._identify_speaker_roles_with_llm(segments, transcription_segments=transcription_segments)
+                    else:
+                        segments = self._identify_speaker_roles(segments, transcription_segments=transcription_segments)
+                    
+                    # LLM post-processing refinement
+                    segments = self._refine_diarization_with_llm(segments)
                     # Save and return
                     try:
                         self.save_diarization(segments, call_id)
@@ -844,7 +945,14 @@ class AudioProcessor:
             logger.info(f"✅ WhisperX 3.x built-in diarization completed. Found {len(set(seg['speaker'] for seg in segments))} speakers, {len(segments)} segments")
             
             # Step 7: Identify customer vs agent roles (for call centers)
-            segments = self._identify_speaker_roles(segments, transcription_segments=result.get("segments", []))
+            # Use LLM-enhanced identification if available, otherwise use heuristics
+            if self.use_llm_diarization and self.llm_role_classifier:
+                segments = self._identify_speaker_roles_with_llm(segments, transcription_segments=result.get("segments", []))
+            else:
+                segments = self._identify_speaker_roles(segments, transcription_segments=result.get("segments", []))
+            
+            # Step 8: LLM post-processing refinement
+            segments = self._refine_diarization_with_llm(segments)
             
             # Save to database if available
             try:
@@ -1099,6 +1207,276 @@ class AudioProcessor:
         
         return segments
     
+    def _identify_speaker_roles_with_llm(self, segments: List[Dict], transcription_segments: Optional[List[Dict]] = None) -> List[Dict]:
+        """
+        LLM-enhanced speaker role identification using Hugging Face zero-shot classification.
+        Uses conversation context and semantic understanding to identify agent vs customer.
+        
+        Args:
+            segments: List of diarization segments with speaker IDs
+            transcription_segments: Optional transcription segments with text
+            
+        Returns:
+            Segments with speaker labels updated to "CUSTOMER" or "AGENT"
+        """
+        if not segments or not self.llm_role_classifier:
+            # Fallback to heuristic method if LLM not available
+            return self._identify_speaker_roles(segments, transcription_segments)
+        
+        logger.info("🤖 Using LLM-enhanced role identification...")
+        
+        # Get unique speakers
+        unique_speakers = list(set(seg.get('speaker', 'Unknown') for seg in segments))
+        
+        if len(unique_speakers) < 2:
+            logger.info("Only 1 speaker detected. Cannot distinguish customer/agent.")
+            return segments
+        
+        # Collect text for each speaker
+        speaker_texts = {sp: [] for sp in unique_speakers}
+        
+        for seg in segments:
+            speaker = seg.get('speaker', 'Unknown')
+            if speaker not in unique_speakers:
+                continue
+            
+            text = seg.get('text', '').strip()
+            if not text and transcription_segments:
+                # Try to find text from transcription segments
+                seg_start = seg.get('start', 0)
+                seg_end = seg.get('end', 0)
+                for trans_seg in transcription_segments:
+                    t_start = trans_seg.get('start', 0)
+                    t_end = trans_seg.get('end', 0)
+                    if abs(t_start - seg_start) < 0.5 and abs(t_end - seg_end) < 0.5:
+                        text = trans_seg.get('text', '').strip()
+                        break
+            
+            if text:
+                speaker_texts[speaker].append(text)
+        
+        # Combine texts for each speaker (take first 500 words to avoid token limits)
+        speaker_combined_texts = {}
+        for speaker, texts in speaker_texts.items():
+            combined = ' '.join(texts)
+            # Limit to ~500 words for efficiency
+            words = combined.split()[:500]
+            speaker_combined_texts[speaker] = ' '.join(words)
+        
+        # Use LLM zero-shot classification to identify roles
+        candidate_labels = ["customer", "call center agent", "support agent", "sales representative"]
+        speaker_role_scores = {}
+        
+        for speaker, text in speaker_combined_texts.items():
+            if not text or len(text.strip()) < 10:
+                # Too little text, skip LLM analysis
+                continue
+            
+            try:
+                # Use zero-shot classification
+                result = self.llm_role_classifier(text, candidate_labels)
+                
+                # Find the best match
+                labels = result['labels']
+                scores = result['scores']
+                
+                # Determine if agent or customer
+                agent_keywords = ['agent', 'representative']
+                customer_keywords = ['customer']
+                
+                agent_score = 0
+                customer_score = 0
+                
+                for label, score in zip(labels, scores):
+                    label_lower = label.lower()
+                    if any(kw in label_lower for kw in agent_keywords):
+                        agent_score += score
+                    elif any(kw in label_lower for kw in customer_keywords):
+                        customer_score += score
+                
+                speaker_role_scores[speaker] = {
+                    'agent_score': agent_score,
+                    'customer_score': customer_score,
+                    'is_agent': agent_score > customer_score
+                }
+                
+                logger.debug(f"Speaker {speaker}: agent_score={agent_score:.3f}, customer_score={customer_score:.3f}")
+                
+            except Exception as e:
+                logger.warning(f"LLM classification failed for speaker {speaker}: {e}")
+                continue
+        
+        # If we have LLM results, use them; otherwise fall back to heuristics
+        if speaker_role_scores:
+            # Determine agent (highest agent_score)
+            agent_speaker = max(speaker_role_scores.items(), 
+                              key=lambda x: x[1]['agent_score'])[0]
+            
+            speaker_role_map = {agent_speaker: "AGENT"}
+            
+            # Assign customer role to others
+            for speaker in unique_speakers:
+                if speaker != agent_speaker:
+                    speaker_role_map[speaker] = "CUSTOMER"
+            
+            logger.info(f"🤖 LLM identified: {agent_speaker} as AGENT")
+        else:
+            # Fallback to heuristic method
+            logger.warning("LLM classification produced no results, falling back to heuristics")
+            return self._identify_speaker_roles(segments, transcription_segments)
+        
+        # Update segments with role labels
+        for seg in segments:
+            original_speaker = seg.get('speaker', 'Unknown')
+            if original_speaker in speaker_role_map:
+                seg['speaker'] = speaker_role_map[original_speaker]
+                seg['original_speaker_id'] = original_speaker
+            else:
+                # Unknown speaker - assign based on speaking time
+                seg['speaker'] = "CUSTOMER"  # Default to customer for unknown
+                seg['original_speaker_id'] = original_speaker
+        
+        # Log final distribution
+        final_speakers = {}
+        for seg in segments:
+            speaker = seg.get('speaker', 'Unknown')
+            duration = seg.get('end', 0) - seg.get('start', 0)
+            if speaker not in final_speakers:
+                final_speakers[speaker] = {'count': 0, 'duration': 0}
+            final_speakers[speaker]['count'] += 1
+            final_speakers[speaker]['duration'] += duration
+        
+        logger.info(f"🤖 LLM role identification completed:")
+        for speaker, stats in final_speakers.items():
+            logger.info(f"  {speaker}: {stats['count']} segments, {stats['duration']:.1f}s total")
+        
+        return segments
+    
+    def _refine_diarization_with_llm(self, segments: List[Dict]) -> List[Dict]:
+        """
+        LLM post-processing refinement to fix diarization errors.
+        Analyzes conversation flow and coherence to correct speaker assignments.
+        
+        Args:
+            segments: List of diarization segments (already with role labels)
+            
+        Returns:
+            Refined segments with corrected speaker assignments
+        """
+        if not segments or not self.use_llm_diarization:
+            return segments
+        
+        logger.info("🔧 Applying LLM post-processing refinement...")
+        
+        # Group segments by speaker and analyze conversation flow
+        speaker_segments = {}
+        for i, seg in enumerate(segments):
+            speaker = seg.get('speaker', 'Unknown')
+            if speaker not in speaker_segments:
+                speaker_segments[speaker] = []
+            speaker_segments[speaker].append({
+                'index': i,
+                'start': seg.get('start', 0),
+                'end': seg.get('end', 0),
+                'text': seg.get('text', '').strip(),
+                'segment': seg
+            })
+        
+        # Analyze conversation flow for inconsistencies
+        refined_segments = segments.copy()
+        corrections_made = 0
+        
+        # Rule 1: Fix very short segments that are likely mis-assigned
+        for i, seg in enumerate(refined_segments):
+            duration = seg.get('end', 0) - seg.get('start', 0)
+            text = seg.get('text', '').strip()
+            
+            # Very short segments (< 0.5s) with no text are likely noise
+            if duration < 0.5 and not text:
+                # Merge with adjacent segment
+                if i > 0:
+                    prev_speaker = refined_segments[i-1].get('speaker')
+                    seg['speaker'] = prev_speaker
+                    corrections_made += 1
+                    logger.debug(f"Corrected segment {i}: merged with previous speaker {prev_speaker}")
+                elif i < len(refined_segments) - 1:
+                    next_speaker = refined_segments[i+1].get('speaker')
+                    seg['speaker'] = next_speaker
+                    corrections_made += 1
+                    logger.debug(f"Corrected segment {i}: merged with next speaker {next_speaker}")
+        
+        # Rule 2: Fix rapid speaker switches (likely errors)
+        # If speaker changes more than 3 times in 5 seconds, it's likely an error
+        for i in range(len(refined_segments) - 3):
+            window_segments = refined_segments[i:i+4]
+            window_duration = window_segments[-1].get('end', 0) - window_segments[0].get('start', 0)
+            
+            if window_duration < 5.0:
+                speakers_in_window = [s.get('speaker') for s in window_segments]
+                unique_speakers = len(set(speakers_in_window))
+                
+                if unique_speakers >= 3:
+                    # Too many speaker switches - likely error
+                    # Assign to the most common speaker in the window
+                    from collections import Counter
+                    speaker_counts = Counter(speakers_in_window)
+                    most_common_speaker = speaker_counts.most_common(1)[0][0]
+                    
+                    # Correct middle segments
+                    for j in range(i+1, i+3):
+                        if refined_segments[j].get('speaker') != most_common_speaker:
+                            refined_segments[j]['speaker'] = most_common_speaker
+                            corrections_made += 1
+                            logger.debug(f"Corrected rapid speaker switch at segment {j}")
+        
+        # Rule 3: Use LLM to analyze conversation coherence (if model available)
+        if self.llm_refinement_model and len(refined_segments) > 2:
+            try:
+                # Analyze conversation context for each segment
+                for i in range(1, len(refined_segments) - 1):
+                    prev_seg = refined_segments[i-1]
+                    curr_seg = refined_segments[i]
+                    next_seg = refined_segments[i+1]
+                    
+                    prev_text = prev_seg.get('text', '').strip()
+                    curr_text = curr_seg.get('text', '').strip()
+                    next_text = next_seg.get('text', '').strip()
+                    
+                    # Skip if not enough text
+                    if not (prev_text and curr_text and next_text):
+                        continue
+                    
+                    # Check if current speaker assignment makes sense in context
+                    prev_speaker = prev_seg.get('speaker')
+                    curr_speaker = curr_seg.get('speaker')
+                    next_speaker = next_seg.get('speaker')
+                    
+                    # If there's a speaker mismatch, analyze context
+                    if prev_speaker == next_speaker and curr_speaker != prev_speaker:
+                        # Current segment is different from surrounding segments
+                        # Check if it's a question/response pattern
+                        context = f"{prev_text} [SEGMENT] {curr_text} [SEGMENT] {next_text}"
+                        
+                        # Simple heuristic: if current text is a continuation of previous, 
+                        # it's likely the same speaker
+                        if (prev_text.endswith(('?', '...', ',')) or 
+                            curr_text.lower().startswith(('yes', 'no', 'well', 'actually', 'i', 'that'))):
+                            # Likely same speaker
+                            if curr_speaker != prev_speaker:
+                                refined_segments[i]['speaker'] = prev_speaker
+                                corrections_made += 1
+                                logger.debug(f"LLM refinement: corrected segment {i} based on conversation flow")
+            except Exception as e:
+                logger.warning(f"LLM refinement analysis failed: {e}")
+                # Continue with rule-based corrections
+        
+        if corrections_made > 0:
+            logger.info(f"🔧 LLM refinement completed: {corrections_made} corrections made")
+        else:
+            logger.info("🔧 LLM refinement completed: no corrections needed")
+        
+        return refined_segments
+    
     def _is_valid_embedding(self, embedding: np.ndarray) -> bool:
         """
         Check if an embedding is valid (not None, not empty, no NaN/inf, proper shape).
@@ -1120,8 +1498,13 @@ class AudioProcessor:
             return False
         return True
     
-    def _merge_similar_speakers(self, embeddings: np.ndarray, cluster_labels: np.ndarray, 
-                                similarity_threshold: float = 0.7) -> np.ndarray:
+    def _merge_similar_speakers(
+        self,
+        embeddings: np.ndarray,
+        cluster_labels: np.ndarray,
+        similarity_threshold: float = 0.7,
+        min_speakers: Optional[int] = None,
+    ) -> np.ndarray:
         """
         PRODUCTION FIX: Merge clusters with very similar average embeddings.
         This reduces over-segmentation by combining clusters that are too similar.
@@ -1137,7 +1520,10 @@ class AudioProcessor:
         from scipy.spatial.distance import cosine
         
         unique_clusters = np.unique(cluster_labels)
+        # If already at or below the minimum speaker count, do not merge further
         if len(unique_clusters) <= 1:
+            return cluster_labels
+        if min_speakers is not None and len(unique_clusters) <= min_speakers:
             return cluster_labels
         
         # Calculate average embedding per cluster (skip invalid embeddings)
@@ -1198,14 +1584,21 @@ class AudioProcessor:
             new_labels = cluster_labels.copy()
             for source_id, target_id in merge_map.items():
                 new_labels[cluster_labels == source_id] = target_id
-            
+
             # Renumber clusters to be consecutive (0, 1, 2, ...)
             unique_new = np.unique(new_labels)
+            # Safeguard: do not reduce below the configured minimum number of speakers
+            if min_speakers is not None and len(unique_new) < min_speakers:
+                logger.info(
+                    f"Skipping cluster merge: would reduce speakers below min_speakers={min_speakers}"
+                )
+                return cluster_labels
+
             label_map = {old_id: new_id for new_id, old_id in enumerate(unique_new)}
             final_labels = np.array([label_map[label] for label in new_labels])
-            
+
             return final_labels + 1  # Make 1-indexed like original
-        
+
         return cluster_labels
     
     def _get_whisperx_align_model(self, language_code: str):
@@ -1222,8 +1615,11 @@ class AudioProcessor:
         self.whisperx_align_models[language_code] = (model_a, metadata)
         return model_a, metadata
     
-    def _match_speakers_across_chunks(self, chunk_speaker_embeddings: Dict, 
-                                      similarity_threshold: float = 0.8) -> Tuple[Dict, int]:
+    def _match_speakers_across_chunks(
+        self,
+        chunk_speaker_embeddings: Dict,
+        similarity_threshold: float = 0.8,
+    ) -> Tuple[Dict, int]:
         """
         PRODUCTION FIX: Match speakers across chunks using embedding similarity.
         Prevents duplicate speaker IDs when the same person appears in multiple chunks.
@@ -1237,8 +1633,9 @@ class AudioProcessor:
             global_speaker_map: Maps (chunk_idx, local_speaker_id) -> global_speaker_id
         """
         from scipy.spatial.distance import cosine
+        from collections import defaultdict
         
-        global_speaker_map = {}
+        global_speaker_map: Dict[Tuple[int, int], int] = {}
         next_global_speaker_id = 0
         
         # Calculate average embedding per speaker per chunk (skip invalid embeddings)
@@ -1277,7 +1674,9 @@ class AudioProcessor:
                 chunk_speaker_centroids[chunk_idx][local_speaker_id] = np.atleast_1d(centroid).flatten()
         
         # Process chunks in order, matching with previous chunks
-        processed_speakers = {}  # Maps global_speaker_id -> centroid
+        processed_speakers: Dict[int, np.ndarray] = {}  # Maps global_speaker_id -> centroid
+        # Safeguard: do not map multiple local speakers in the same chunk to the same global ID
+        chunk_used_globals: Dict[int, set] = defaultdict(set)
         
         for chunk_idx in sorted(chunk_speaker_centroids.keys()):
             for local_speaker_id, centroid in chunk_speaker_centroids[chunk_idx].items():
@@ -1303,9 +1702,10 @@ class AudioProcessor:
                         continue
                 
                 # Assign speaker ID
-                if best_match_id is not None:
-                    # Match found - use existing global ID
+                if best_match_id is not None and best_match_id not in chunk_used_globals[chunk_idx]:
+                    # Match found - use existing global ID (not yet used in this chunk)
                     global_speaker_map[chunk_speaker_key] = best_match_id
+                    chunk_used_globals[chunk_idx].add(best_match_id)
                     # Update centroid (weighted average with previous chunks)
                     prev_centroid_1d = np.atleast_1d(processed_speakers[best_match_id]).flatten()
                     processed_speakers[best_match_id] = (
@@ -1314,6 +1714,7 @@ class AudioProcessor:
                 else:
                     # New speaker - assign new global ID
                     global_speaker_map[chunk_speaker_key] = next_global_speaker_id
+                    chunk_used_globals[chunk_idx].add(next_global_speaker_id)
                     processed_speakers[next_global_speaker_id] = centroid_1d
                     next_global_speaker_id += 1
         
@@ -1520,7 +1921,8 @@ class AudioProcessor:
         # PRODUCTION FIX: Cross-chunk speaker re-identification
         logger.info("Matching speakers across chunks...")
         global_speaker_map, next_global_speaker_id = self._match_speakers_across_chunks(
-            chunk_speaker_embeddings, similarity_threshold=0.8
+            chunk_speaker_embeddings,
+            similarity_threshold=self.cross_chunk_similarity_threshold,
         )
         
         # Build final segments with merged speaker IDs
@@ -1544,7 +1946,14 @@ class AudioProcessor:
         logger.info(f"✅ Chunked diarization completed. Found {unique_speakers} speakers (after cross-chunk matching), {len(all_segments)} segments")
         
         # Identify customer vs agent roles (for call centers)
-        all_segments = self._identify_speaker_roles(all_segments, transcription_segments=None)
+        # Use LLM-enhanced identification if available, otherwise use heuristics
+        if self.use_llm_diarization and self.llm_role_classifier:
+            all_segments = self._identify_speaker_roles_with_llm(all_segments, transcription_segments=None)
+        else:
+            all_segments = self._identify_speaker_roles(all_segments, transcription_segments=None)
+        
+        # LLM post-processing refinement
+        all_segments = self._refine_diarization_with_llm(all_segments)
         
         try:
             self.save_diarization(all_segments, call_id)
@@ -1605,6 +2014,16 @@ class AudioProcessor:
                 })
             
             logger.info(f"✅ Pyannote.audio diarization completed. Found {len(segments)} speaker segments")
+            
+            # Identify customer vs agent roles (for call centers)
+            # Use LLM-enhanced identification if available, otherwise use heuristics
+            if self.use_llm_diarization and self.llm_role_classifier:
+                segments = self._identify_speaker_roles_with_llm(segments, transcription_segments=None)
+            else:
+                segments = self._identify_speaker_roles(segments, transcription_segments=None)
+            
+            # LLM post-processing refinement
+            segments = self._refine_diarization_with_llm(segments)
             
             try:
                 self.save_diarization(segments, call_id)

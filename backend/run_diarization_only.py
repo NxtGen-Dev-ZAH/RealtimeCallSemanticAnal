@@ -152,7 +152,11 @@ def run_diarization_only(
             clustering_threshold=clustering_threshold,
             min_segment_duration=min_segment_duration,
             speaker_merge_threshold=speaker_merge_threshold,
-            use_whisperx_builtin_diarization=use_whisperx_builtin
+            use_whisperx_builtin_diarization=use_whisperx_builtin,
+            use_llm_diarization=Config.USE_LLM_DIARIZATION,
+            llm_role_model=Config.LLM_ROLE_IDENTIFICATION_MODEL,
+            llm_refinement_model=Config.LLM_REFINEMENT_MODEL,
+            llm_device=Config.LLM_DEVICE
         )
         
         if use_whisperx_builtin:

@@ -36,6 +36,12 @@ class Config:
     BERT_MODEL_NAME = os.getenv('BERT_MODEL_NAME', 'distilbert-base-uncased')
     PYANNOTE_AUDIO_MODEL = os.getenv('PYANNOTE_AUDIO_MODEL', 'pyannote/speaker-diarization')
     
+    # LLM Configuration for Diarization Enhancement
+    USE_LLM_DIARIZATION = os.getenv('USE_LLM_DIARIZATION', 'True').lower() == 'true'
+    LLM_ROLE_IDENTIFICATION_MODEL = os.getenv('LLM_ROLE_IDENTIFICATION_MODEL', 'facebook/bart-large-mnli')  # BART-MNLI for zero-shot classification
+    LLM_REFINEMENT_MODEL = os.getenv('LLM_REFINEMENT_MODEL', 'google/flan-t5-base')  # FLAN-T5 for correction/refinement
+    LLM_DEVICE = os.getenv('LLM_DEVICE', 'cpu')  # 'cpu' or 'cuda'
+    
     # File Upload Configuration
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
     # Handle MAX_CONTENT_LENGTH with proper parsing
