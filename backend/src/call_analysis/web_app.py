@@ -5,6 +5,7 @@ Integrates full pipeline, stores results in MongoDB (FR-7), and masks PII.
 """
 
 from flask import Flask, render_template, request, jsonify, send_file
+from flask_cors import CORS
 import os
 import json
 import logging
@@ -26,6 +27,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+# Enable CORS for frontend connections
+CORS(app, resources={
+    r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]},
+    r"/health": {"origins": "*"}
+})
 Config.init_app(app)
 
 # Initialize components

@@ -33,10 +33,24 @@ python setup.py
 ```
 
 ### Option 2: Manual Setup
-1. Install dependencies:
+1. Install dependencies using **uv** (recommended):
 ```bash
-pip install -r requirements.txt
-# OR
+# Install uv if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Navigate to backend directory
+cd backend
+
+# Install all dependencies (creates venv and installs from pyproject.toml)
+uv sync
+
+# OR install in editable mode
+uv pip install -e .
+```
+
+**Alternative using pip:**
+```bash
+cd backend
 pip install -e .
 ```
 

@@ -8,8 +8,11 @@ import sys
 import os
 from pathlib import Path
 
-# Add backend/src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend', 'src'))
+# Add src to path (now we're in backend/scripts/, so go up one level to backend/, then to src)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+backend_dir = os.path.dirname(script_dir)
+src_dir = os.path.join(backend_dir, 'src')
+sys.path.insert(0, src_dir)
 
 from dotenv import load_dotenv
 from call_analysis.preprocessing import AudioProcessor
@@ -111,8 +114,14 @@ def transcribe_audio_file(audio_path: str, model_size: str = "base"):
             print("-" * 60)
             print()
         
-        # Save to file
-        output_file = "transcription_output.txt"
+        # Save to file - use output directory relative to project root
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_dir = os.path.dirname(script_dir)
+        project_root = os.path.dirname(backend_dir)
+        output_dir = os.path.join(project_root, 'output')
+        os.makedirs(output_dir, exist_ok=True)
+        output_file = os.path.join(output_dir, "transcription_output.txt")
+        
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write("=" * 60 + "\n")
@@ -159,15 +168,21 @@ def transcribe_audio_file(audio_path: str, model_size: str = "base"):
         return
 
 if __name__ == "__main__":
-    # Default to real_audio.wav in project root
-    audio_file = "real_audio.wav"
+    # Get project root (go up from backend/scripts/ to project root)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_dir = os.path.dirname(script_dir)
+    project_root = os.path.dirname(backend_dir)
     
-    # Check if file exists in current directory
+    # Default to real_audio.wav in project root
+    audio_file = os.path.join(project_root, "real_audio.wav")
+    
+    # Check if file exists
     if not os.path.exists(audio_file):
-        # Try in parent directory
-        audio_file = os.path.join("..", "real_audio.wav")
+        # Try just the filename in project root
+        filename = "real_audio.wav"
+        audio_file = os.path.join(project_root, filename)
         if not os.path.exists(audio_file):
-            print("❌ Error: real_audio.wav not found")
+            print("❌ Error: real_audio.wav not found in project root")
             print()
             print("Usage:")
             print("  python transcribe_audio.py")
@@ -179,6 +194,13 @@ if __name__ == "__main__":
     # Check for command line argument
     if len(sys.argv) > 1:
         audio_file = sys.argv[1]
+        # If relative path, make it absolute or relative to project root
+        if not os.path.isabs(audio_file):
+            # Try relative to project root first
+            test_path = os.path.join(project_root, audio_file)
+            if os.path.exists(test_path):
+                audio_file = test_path
+            # Otherwise use as-is (relative to current working directory)
     
     # Optional: specify model size as second argument
     model_size = "base"
@@ -186,6 +208,4 @@ if __name__ == "__main__":
         model_size = sys.argv[2]
     
     transcribe_audio_file(audio_file, model_size)
-
-
 
