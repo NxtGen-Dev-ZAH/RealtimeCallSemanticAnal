@@ -6,27 +6,11 @@ import EmotionChart from './EmotionChart';
 import SaleGauge from './SaleGauge';
 import KeyPhrases from './KeyPhrases';
 import { TrendingUp, TrendingDown, Users, Clock, Download, FileText, FileSpreadsheet } from 'lucide-react';
-import { apiService } from '@/lib/api';
 import toast from 'react-hot-toast';
-
-interface AnalysisResults {
-  call_id: string;
-  sentiment_scores: Array<{ timestamp: number; score: number }>;
-  emotions: Record<string, number>;
-  sale_probability: number;
-  key_phrases: {
-    positive: string[];
-    negative: string[];
-  };
-  summary: {
-    avg_sentiment: number;
-    total_duration: number;
-    participants: number;
-  };
-}
+import type { CallResults } from '@/lib/types';
 
 interface AnalysisDashboardProps {
-  results: AnalysisResults;
+  results: CallResults;
 }
 
 const AnalysisDashboard = ({ results }: AnalysisDashboardProps) => {

@@ -2,7 +2,6 @@
 name = "call-analysis"
 version = "0.1.0"
 description = "AI-powered call center sentiment analysis and sale prediction system"
-readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "torch>=2.0.0",
@@ -17,8 +16,9 @@ dependencies = [
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
     "plotly>=5.15.0",
-    "flask>=2.3.0",
-    "flask-cors>=4.0.0",
+    "fastapi>=0.115.0", # New FastAPI backend
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.9", # For FastAPI file uploads
     "pydub>=0.25.0",
     "soundfile>=0.12.0",
     "whisperx>=3.7.0",
@@ -34,7 +34,6 @@ dependencies = [
     "thinc>=8.3.4,<8.4.0",
     "pip>=25.2",
     "psutil>=7.1.3",
-    
 ]
 
 [project.scripts]
@@ -45,4 +44,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["backend/src/call_analysis"]
+packages = ["src/call_analysis"]
