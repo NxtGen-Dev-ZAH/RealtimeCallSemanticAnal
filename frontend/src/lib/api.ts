@@ -3,7 +3,8 @@
  */
 
 import type { 
-  UploadResponse, 
+  UploadResponse,
+  AnalyzeResponse,
   StatusResponse, 
   CallResults, 
   CallHistoryItem 
@@ -35,7 +36,7 @@ class ApiService {
   /**
    * Start analysis for an uploaded call
    */
-  async analyzeCall(callId: string): Promise<{ message: string; call_id: string; status: string }> {
+  async analyzeCall(callId: string): Promise<AnalyzeResponse> {
     const response = await fetch(`${API_BASE_URL}/api/analyze`, {
       method: 'POST',
       headers: {

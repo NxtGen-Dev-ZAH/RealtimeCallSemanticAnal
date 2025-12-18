@@ -11,10 +11,20 @@ export interface UploadResponse {
   size: number;
 }
 
+// Analyze response from POST /api/analyze
+export interface AnalyzeResponse {
+  message: string;
+  call_id: string;
+  status: string;
+}
+
+// Call status types
+export type CallStatus = 'processing' | 'completed' | 'failed' | 'unknown';
+
 // Status response from GET /api/status/{call_id}
 export interface StatusResponse {
   call_id: string;
-  status: 'processing' | 'completed' | 'failed' | 'unknown';
+  status: CallStatus;
   progress: number;
 }
 
