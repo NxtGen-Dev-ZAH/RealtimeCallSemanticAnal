@@ -15,7 +15,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+backend/lib/
+backend/lib64/
 lib64/
 parts/
 sdist/
@@ -106,6 +107,7 @@ build/
 out/
 coverage/
 .vercel/
+*.tsbuildinfo
 
 # Frontend env files (in case there is a separate frontend project)
 frontend/.env*
