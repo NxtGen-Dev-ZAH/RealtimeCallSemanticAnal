@@ -25,11 +25,11 @@ class Config:
     POSTGRES_USER = os.getenv('POSTGRES_USER', '')
     POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', '')
     
-    # Flask Configuration
-    SECRET_KEY = os.getenv('FLASK_SECRET_KEY', 'call-analysis-demo-2025')
-    DEBUG = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
-    HOST = os.getenv('FLASK_HOST', '0.0.0.0')
-    PORT = int(os.getenv('FLASK_PORT', 5000))
+    # FastAPI Configuration
+    SECRET_KEY = os.getenv('SECRET_KEY', 'call-analysis-demo-2025')
+    DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+    HOST = os.getenv('HOST', '0.0.0.0')
+    PORT = int(os.getenv('PORT', 8000))
     
     # Model Configuration
     WHISPER_MODEL_SIZE = os.getenv('WHISPER_MODEL_SIZE', 'base')
@@ -64,17 +64,12 @@ class Config:
     USE_SIMULATED_AUDIO = os.getenv('USE_SIMULATED_AUDIO', 'True').lower() == 'true'
     
     @staticmethod
-    def init_app(app):
-        """Initialize application with configuration"""
-        app.config['SECRET_KEY'] = Config.SECRET_KEY
-        app.config['UPLOAD_FOLDER'] = Config.UPLOAD_FOLDER
-        app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
-        
-        # Create necessary directories
+    def init_directories():
+        """Create necessary directories for the application"""
         os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
         os.makedirs(os.path.dirname(Config.LOG_FILE), exist_ok=True)
         os.makedirs('output', exist_ok=True)
-        os.makedirs('templates', exist_ok=True)
+        os.makedirs('exports', exist_ok=True)
 
 class DevelopmentConfig(Config):
     """Development configuration"""
