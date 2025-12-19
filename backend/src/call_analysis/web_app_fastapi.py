@@ -1,8 +1,7 @@
 """
 FastAPI web application for call analysis system.
 
-This is a FastAPI port of the original Flask-based `web_app.py`, exposing the
-same REST API surface so the existing Next.js frontend can keep working:
+This FastAPI application exposes the REST API for the Next.js frontend:
 
 - GET    /                    -> API root metadata
 - GET    /health              -> health check
@@ -47,7 +46,7 @@ from .demo import DemoSystem
 from .models import ConversationAnalyzer
 from .dashboard import Dashboard
 
-# Import configuration (same pattern as Flask app)
+# Import configuration
 import sys as _sys
 
 _sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -55,6 +54,12 @@ from config import Config  # type: ignore  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# --------- Pydantic models ----------
+
+class StartAnalysisRequest(BaseModel):
+    call_id: str
 
 
 def create_app() -> FastAPI:
@@ -78,7 +83,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Initialize shared components (same as Flask version)
+    # Initialize directories on startup
+    @app.on_event("startup")
+    def startup_event():
+        Config.init_directories()
+
+    # Initialize shared components
     demo_system = DemoSystem(hf_token=Config.HF_TOKEN)
     analyzer = ConversationAnalyzer()
     dashboard = Dashboard()
@@ -89,11 +99,6 @@ def create_app() -> FastAPI:
 
     def allowed_file(filename: str) -> bool:
         return "." in filename and filename.rsplit(".", 1)[1].lower() in Config.ALLOWED_EXTENSIONS
-
-    # --------- Pydantic models ----------
-
-    class StartAnalysisRequest(BaseModel):
-        call_id: str
 
     # --------- Routes ----------
 
@@ -132,7 +137,7 @@ def create_app() -> FastAPI:
         try:
             result = demo_system.analyze_single_conversation(conversation_id)
 
-            # Mask PII in results (same as Flask)
+            # Mask PII in results
             for seg in result.get("sentiment_analysis", []):
                 seg["text"] = dashboard.mask_pii(seg["text"])
             for seg in result.get("segments", []):
@@ -732,5 +737,6 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
 
 

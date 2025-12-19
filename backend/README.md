@@ -20,7 +20,7 @@ An AI-powered sentiment analysis system that predicts sale probability using mul
 5. **Visualization Dashboard**: Web-based analytics interface
 
 ### Technologies
-- **Backend**: Python 3.10, PyTorch 2.2, Flask/FastAPI
+- **Backend**: Python 3.10, PyTorch 2.2, FastAPI
 - **ML Models**: Hugging Face Transformers, Whisper, Pyannote.audio
 - **Frontend**: React 18, Plotly.js
 - **Database**: PostgreSQL 15, MongoDB
@@ -72,7 +72,7 @@ python presentation_demo.py
 
 ### Access the System
 - **Demo Mode**: Run `python run_demo.py` for command-line demo
-- **Web Dashboard**: Run `python run_web_app.py` and visit http://localhost:5000
+- **Web Dashboard**: Run `python run_web_app.py` and visit http://localhost:8000
 - **Output Files**: Check the `output/` directory for generated reports and dashboards
 
 ## Environment Configuration
@@ -96,7 +96,7 @@ cp env_template.txt .env
 2. Set `USE_SIMULATED_AUDIO=False`
 3. Provide valid `HF_TOKEN` for real model access
 4. Configure MongoDB/PostgreSQL connections
-5. Set secure `FLASK_SECRET_KEY`
+5. Set secure `SECRET_KEY`
 
 ## Demo Features
 

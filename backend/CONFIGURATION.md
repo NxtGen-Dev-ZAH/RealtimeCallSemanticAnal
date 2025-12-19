@@ -13,11 +13,11 @@ MONGODB_URI=
 # mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 MONGODB_DATABASE=call_center_db
 
-# Flask Configuration
-FLASK_SECRET_KEY=your-secret-key-here
-FLASK_DEBUG=True
-FLASK_HOST=0.0.0.0
-FLASK_PORT=5000
+# FastAPI Configuration
+SECRET_KEY=your-secret-key-here
+DEBUG=True
+HOST=0.0.0.0
+PORT=8000
 
 # Model Configuration
 WHISPER_MODEL_SIZE=base
