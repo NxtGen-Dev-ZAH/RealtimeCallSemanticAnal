@@ -42,28 +42,55 @@ export default function Home() {
       console.log('Analysis started:', analysisResponse);
 
       // Poll for status updates
+      let pollCount = 0;
+      const maxPolls = 300; // Maximum 10 minutes (300 * 2 seconds)
+      
       const pollStatus = async () => {
         try {
+          pollCount++;
+          
+          // Safety check to prevent infinite polling
+          if (pollCount > maxPolls) {
+            setIsAnalyzing(false);
+            toast.error('Analysis is taking longer than expected. Please check back later.');
+            return;
+          }
+
           const statusResponse = await apiService.getStatus(uploadedFile.call_id);
           setAnalysisStatus(statusResponse);
 
-          if (statusResponse.status === 'processing') {
+          if (statusResponse.status === 'processing' || statusResponse.status === 'pending') {
             // Continue polling
             setTimeout(pollStatus, 2000);
           } else if (statusResponse.status === 'completed') {
             // Fetch results
-            const results = await apiService.getResults(uploadedFile.call_id);
-            setAnalysisResults(results);
-            setIsAnalyzing(false);
-            toast.success('Analysis completed successfully!');
+            try {
+              const results = await apiService.getResults(uploadedFile.call_id);
+              setAnalysisResults(results);
+              setIsAnalyzing(false);
+              toast.success('Analysis completed successfully!');
+            } catch (error: any) {
+              console.error('Error fetching results:', error);
+              setIsAnalyzing(false);
+              toast.error(`Failed to fetch results: ${error?.message || 'Unknown error'}`);
+            }
           } else if (statusResponse.status === 'failed') {
             setIsAnalyzing(false);
-            toast.error('Analysis failed. Please try again.');
+            toast.error('Analysis failed. Please try again or contact support if the issue persists.');
+          } else {
+            // Unknown status, continue polling but log warning
+            console.warn('Unknown status:', statusResponse.status);
+            setTimeout(pollStatus, 2000);
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error polling status:', error);
-          setIsAnalyzing(false);
-          toast.error('Error checking analysis status');
+          // Don't stop polling on network errors, but limit retries
+          if (pollCount < 10) {
+            setTimeout(pollStatus, 2000);
+          } else {
+            setIsAnalyzing(false);
+            toast.error(`Error checking analysis status: ${error?.message || 'Network error'}`);
+          }
         }
       };
 
@@ -73,7 +100,8 @@ export default function Home() {
       console.error('Error starting analysis:', error);
       setIsAnalyzing(false);
       setAnalysisStatus(null);
-      toast.error(`Analysis failed: ${error.message}`);
+      const errorMessage = error?.message || 'Failed to start analysis. Please try again.';
+      toast.error(`Analysis failed: ${errorMessage}`);
     }
   };
 

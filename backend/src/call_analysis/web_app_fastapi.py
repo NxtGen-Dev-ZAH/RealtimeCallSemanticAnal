@@ -33,11 +33,14 @@ from fastapi import (
     FastAPI,
     UploadFile,
     File,
+    Form,
     HTTPException,
     status,
     Depends,
     Body,
 )
+import threading
+import numpy as np
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, Response
 from pydantic import BaseModel
@@ -82,13 +85,96 @@ def create_app() -> FastAPI:
     demo_system = DemoSystem(hf_token=Config.HF_TOKEN)
     analyzer = ConversationAnalyzer()
     dashboard = Dashboard()
-    mongo_client = MongoClient(Config.MONGODB_URI)
-    db = mongo_client[Config.MONGODB_DATABASE]
+    
+    # Initialize MongoDB client with proper connection options for Atlas
+    mongo_client = None
+    db = None
+    
+    try:
+        logger.info("Attempting to connect to MongoDB...")
+        
+        # For MongoDB Atlas, use connection options that handle SSL/TLS properly
+        if Config.MONGODB_URI.startswith('mongodb+srv://') or 'mongodb.net' in Config.MONGODB_URI:
+            # Atlas connection - use longer timeouts and retry options
+            logger.info("Detected MongoDB Atlas connection string")
+            mongo_client = MongoClient(
+                Config.MONGODB_URI,
+                serverSelectionTimeoutMS=30000,  # 30 second timeout (increased)
+                connectTimeoutMS=30000,  # 30 second connection timeout
+                socketTimeoutMS=30000,  # 30 second socket timeout
+                retryWrites=True,
+                retryReads=True,
+                tls=True,  # Explicitly enable TLS for Atlas
+                tlsAllowInvalidCertificates=False,  # Use proper SSL validation
+            )
+        else:
+            # Local MongoDB connection
+            logger.info("Detected local MongoDB connection")
+            mongo_client = MongoClient(
+                Config.MONGODB_URI,
+                serverSelectionTimeoutMS=10000,
+            )
+        
+        # Test connection immediately with better error reporting
+        logger.info("Testing MongoDB connection...")
+        mongo_client.admin.command('ping')
+        logger.info(f"✅ Successfully connected to MongoDB: {Config.MONGODB_DATABASE}")
+        db = mongo_client[Config.MONGODB_DATABASE]
+        
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"❌ Failed to connect to MongoDB")
+        logger.error(f"   Error: {error_msg}")
+        
+        # Provide helpful diagnostic messages
+        if 'ServerSelectionTimeoutError' in error_msg or 'No replica set members found' in error_msg:
+            logger.error("")
+            logger.error("🔍 DIAGNOSTIC: This usually means:")
+            logger.error("   1. Your IP address is not whitelisted in MongoDB Atlas")
+            logger.error("      → Go to Atlas → Network Access → Add IP Address")
+            logger.error("      → Add '0.0.0.0/0' for development (allows all IPs)")
+            logger.error("   2. Firewall is blocking the connection")
+            logger.error("   3. MongoDB Atlas cluster might be paused")
+            logger.error("")
+            logger.error("💡 Quick fix: Add your IP to Atlas Network Access:")
+            logger.error("   https://cloud.mongodb.com/v2#/security/network/whitelist")
+            logger.error("")
+        elif 'authentication' in error_msg.lower() or 'auth' in error_msg.lower():
+            logger.error("")
+            logger.error("🔍 DIAGNOSTIC: Authentication failed")
+            logger.error("   → Check your username and password in MONGODB_URI")
+            logger.error("   → Verify database user has read/write permissions")
+            logger.error("")
+        elif 'SSL' in error_msg or 'TLS' in error_msg:
+            logger.error("")
+            logger.error("🔍 DIAGNOSTIC: SSL/TLS handshake failed")
+            logger.error("   → Check your connection string format")
+            logger.error("   → Ensure you're using 'mongodb+srv://' for Atlas")
+            logger.error("")
+        
+        logger.error(f"   Connection URI format: {'mongodb+srv://' if Config.MONGODB_URI.startswith('mongodb+srv://') else 'mongodb://'}...")
+        logger.error("")
+        logger.error("⚠️  Backend will start but MongoDB-dependent features will fail.")
+        logger.error("   Fix the connection and restart the server.")
+        logger.error("")
+        
+        # Don't raise error - allow app to start but log the issue
+        # This way the API can still serve non-database endpoints
+        mongo_client = None
+        db = None
 
     # --------- Helpers ----------
 
     def allowed_file(filename: str) -> bool:
         return "." in filename and filename.rsplit(".", 1)[1].lower() in Config.ALLOWED_EXTENSIONS
+    
+    def check_mongodb_connection() -> None:
+        """Check if MongoDB is connected, raise HTTPException if not."""
+        if db is None:
+            raise HTTPException(
+                status_code=503,
+                detail="MongoDB connection not available. Please check your MONGODB_URI configuration and ensure MongoDB Atlas network access is configured."
+            )
 
     # --------- Pydantic models ----------
 
@@ -140,13 +226,18 @@ def create_app() -> FastAPI:
             result["summary"] = dashboard.mask_pii(result.get("summary", ""))
 
             # Save to MongoDB
-            db["analyses"].insert_one(
-                {
-                    "conversation_id": conversation_id,
-                    "result": result,
-                    "timestamp": datetime.now(),
-                }
-            )
+            if db is not None:
+                try:
+                    check_mongodb_connection()
+                    db["analyses"].insert_one(
+                        {
+                            "conversation_id": conversation_id,
+                            "result": result,
+                            "timestamp": datetime.now(),
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to save to MongoDB (non-critical): {e}")
             return JSONResponse(result)
         except ValueError as e:
             logger.error(f"Conversation {conversation_id} not found: {e}")
@@ -168,12 +259,17 @@ def create_app() -> FastAPI:
                     seg["text"] = dashboard.mask_pii(seg["text"])
                 result["summary"] = dashboard.mask_pii(result.get("summary", ""))
 
-            db["batch_analyses"].insert_one(
-                {
-                    "results": results,
-                    "timestamp": datetime.now(),
-                }
-            )
+            if db is not None:
+                try:
+                    check_mongodb_connection()
+                    db["batch_analyses"].insert_one(
+                        {
+                            "results": results,
+                            "timestamp": datetime.now(),
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to save to MongoDB (non-critical): {e}")
             return JSONResponse(results)
         except Exception as e:  # pragma: no cover - defensive
             logger.error(f"Batch analysis failed: {e}")
@@ -205,151 +301,177 @@ def create_app() -> FastAPI:
             results = demo_system.batch_analyze_all()
             insights = analyzer.get_agent_insights(results)
 
-            db["insights"].insert_one(
-                {
-                    "insights": insights,
-                    "timestamp": datetime.now(),
-                }
-            )
+            if db is not None:
+                try:
+                    check_mongodb_connection()
+                    db["insights"].insert_one(
+                        {
+                            "insights": insights,
+                            "timestamp": datetime.now(),
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to save to MongoDB (non-critical): {e}")
             return JSONResponse(insights)
         except Exception as e:  # pragma: no cover - defensive
             logger.error(f"Insights generation failed: {e}")
             raise HTTPException(status_code=500, detail="Insights generation failed")
 
     @app.post("/api/upload")
-    async def upload_audio(file: UploadFile = File(...)) -> JSONResponse:
-        """Upload and analyze real audio file."""
+    async def upload_audio(
+        file: UploadFile = File(None),
+        audio: UploadFile = File(None)
+    ) -> JSONResponse:
+        """Upload audio file (async - only saves file, analysis triggered separately)."""
         try:
-            if not file.filename:
+            # Accept both 'file' and 'audio' field names for compatibility
+            upload_file = file if file else audio
+            
+            if not upload_file or not upload_file.filename:
                 raise HTTPException(status_code=400, detail="No file selected")
-            if not allowed_file(file.filename):
+            
+            if not allowed_file(upload_file.filename):
                 raise HTTPException(
                     status_code=400,
                     detail="Invalid file type. Use .wav, .mp3, or .m4a",
                 )
 
+            # Read file content to check size
+            content = await upload_file.read()
+            file_size = len(content)
+            
+            # Validate file size (100MB limit)
+            max_size = 100 * 1024 * 1024  # 100MB
+            if file_size > max_size:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File size ({file_size / (1024*1024):.2f}MB) exceeds maximum allowed size (100MB)",
+                )
+            
+            if file_size == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="File is empty",
+                )
+
             # Save file
             os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
-            filename = os.path.basename(file.filename)
-            audio_path = os.path.join(Config.UPLOAD_FOLDER, filename)
+            filename = os.path.basename(upload_file.filename)
+            # Ensure unique filename to avoid overwrites
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+            base_name, ext = os.path.splitext(filename)
+            unique_filename = f"{base_name}_{timestamp}{ext}"
+            audio_path = os.path.join(Config.UPLOAD_FOLDER, unique_filename)
 
             with open(audio_path, "wb") as f:
-                f.write(await file.read())
+                f.write(content)
 
-            # Process audio (full pipeline)
-            call_id = f"upload_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            transcription = demo_system.audio_processor.transcribe_audio(audio_path, call_id)
-            segments = demo_system.audio_processor.perform_speaker_diarization(audio_path, call_id)
-            processed_segments = demo_system.text_processor.segment_conversation(
-                transcription.get("text", ""),
-                segments,
-                call_id,
-                transcription_segments=transcription.get("segments", []),
-            )
-            audio_features = demo_system.audio_processor.extract_audio_features(audio_path)
+            # Generate call_id
+            call_id = f"upload_{timestamp}"
 
-            feature_data = [
-                {
-                    "audio_features": audio_features,
-                    "text_features": {"text": transcription.get("text", "")},
-                    "segments": processed_segments,
-                }
-            ]
-            fused_features = demo_system.feature_extractor.fit_transform(feature_data)[0]
-
-            result = demo_system.analyzer.analyze_conversation(
-                audio_path=audio_path,
-                segments=processed_segments,
-                features=fused_features,
-                call_id=call_id,
-            )
-
-            # Mask PII
-            for seg in result.get("sentiment_analysis", []):
-                seg["text"] = dashboard.mask_pii(seg["text"])
-            for seg in result.get("segments", []):
-                seg["text"] = dashboard.mask_pii(seg["text"])
-            result["summary"] = dashboard.mask_pii(result.get("summary", ""))
-
-            # Save to MongoDB - calls collection for frontend
-            call_doc = {
-                "call_id": call_id,
-                "filename": filename,
-                "audio_path": audio_path,
-                "timestamp": datetime.now(),
-                "status": "completed",
-                "progress": 100,
-                "duration": result.get("duration", 0),
-                "participants": result.get("participants", 2),
-                "avg_sentiment": result.get("avg_sentiment", 0),
-                "sale_probability": result.get("sale_probability", 0),
-                "sentiment_scores": result.get("sentiment_scores", []),
-                "emotions": result.get("emotions", {}),
-                "key_phrases": result.get("key_phrases", {"positive": [], "negative": []}),
-                "result": result,
-            }
-
-            db.calls.insert_one(call_doc)
-
-            # Also save to analyses collection for backward compatibility
-            db.analyses.insert_one(
-                {
-                    "conversation_id": call_id,
-                    "result": result,
-                    "audio_path": audio_path,
-                    "timestamp": datetime.now(),
-                }
-            )
+            # Create MongoDB document with status 'pending' (analysis will be triggered separately)
+            # Handle MongoDB connection gracefully - allow upload even if DB is unavailable
+            if db is not None:
+                try:
+                    check_mongodb_connection()
+                    call_doc = {
+                        "call_id": call_id,
+                        "filename": filename,
+                        "audio_path": audio_path,
+                        "timestamp": datetime.now(),
+                        "status": "pending",
+                        "progress": 0,
+                        "duration": 0,
+                        "participants": 0,
+                        "avg_sentiment": 0,
+                        "sale_probability": 0,
+                        "sentiment_scores": [],
+                        "emotions": {},
+                        "key_phrases": {"positive": [], "negative": []},
+                    }
+                    db.calls.insert_one(call_doc)
+                except Exception as db_error:
+                    logger.warning(f"MongoDB save failed (non-critical): {db_error}. File uploaded but not saved to database.")
+            else:
+                logger.warning("MongoDB not available. File uploaded but not saved to database.")
 
             return JSONResponse(
                 {
                     "status": "success",
-                    "message": "Audio analyzed successfully",
+                    "message": "File uploaded successfully. Use /api/analyze to start analysis.",
                     "call_id": call_id,
                     "filename": filename,
-                    "size": os.path.getsize(audio_path),
+                    "size": file_size,
                 }
             )
         except HTTPException:
             raise
         except Exception as e:  # pragma: no cover - defensive
             logger.error(f"Audio upload failed: {e}")
-            raise HTTPException(status_code=500, detail="Audio analysis failed")
+            raise HTTPException(status_code=500, detail=f"Audio upload failed: {str(e)}")
 
-    @app.get("/api/export/{conversation_id}")
-    def export_results(conversation_id: str) -> FileResponse:
+    @app.get("/api/export/{call_id}")
+    def export_results(call_id: str) -> FileResponse:
         """Export analysis results as JSON file."""
         try:
-            result = demo_system.analyze_single_conversation(conversation_id)
-
-            # Mask PII
-            for seg in result.get("sentiment_analysis", []):
-                seg["text"] = dashboard.mask_pii(seg["text"])
-            for seg in result.get("segments", []):
-                seg["text"] = dashboard.mask_pii(seg["text"])
-            result["summary"] = dashboard.mask_pii(result.get("summary", ""))
-
-            export_data = {
-                "conversation_id": conversation_id,
-                "timestamp": datetime.now().isoformat(),
-                "analysis": result,
-            }
+            check_mongodb_connection()
+            call_doc = db.calls.find_one({"call_id": call_id})
+            if not call_doc:
+                # Fallback to demo conversation if not found in calls collection
+                try:
+                    result = demo_system.analyze_single_conversation(call_id)
+                    # Mask PII
+                    for seg in result.get("sentiment_analysis", []):
+                        seg["text"] = dashboard.mask_pii(seg["text"])
+                    for seg in result.get("segments", []):
+                        seg["text"] = dashboard.mask_pii(seg["text"])
+                    result["summary"] = dashboard.mask_pii(result.get("summary", ""))
+                    
+                    export_data = {
+                        "conversation_id": call_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "analysis": result,
+                    }
+                except ValueError:
+                    raise HTTPException(status_code=404, detail="Call not found")
+            else:
+                # Export from real call data
+                result = call_doc.get("result", {})
+                export_data = {
+                    "call_id": call_id,
+                    "filename": call_doc.get("filename", "unknown"),
+                    "timestamp": call_doc.get("timestamp", datetime.now()).isoformat() if isinstance(call_doc.get("timestamp"), datetime) else str(call_doc.get("timestamp", datetime.now())),
+                    "status": call_doc.get("status", "unknown"),
+                    "duration": call_doc.get("duration", 0),
+                    "participants": call_doc.get("participants", 0),
+                    "avg_sentiment": call_doc.get("avg_sentiment", 0),
+                    "sale_probability": call_doc.get("sale_probability", 0),
+                    "sentiment_scores": call_doc.get("sentiment_scores", []),
+                    "emotions": call_doc.get("emotions", {}),
+                    "key_phrases": call_doc.get("key_phrases", {"positive": [], "negative": []}),
+                    "analysis": result,
+                }
 
             output_dir = "output"
             os.makedirs(output_dir, exist_ok=True)
-            export_path = os.path.join(output_dir, f"{conversation_id}_export.json")
+            export_path = os.path.join(output_dir, f"{call_id}_export.json")
 
             with open(export_path, "w", encoding="utf-8") as f:
                 json.dump(export_data, f, indent=2, default=str)
 
-            db["exports"].insert_one(
-                {
-                    "conversation_id": conversation_id,
-                    "export_path": export_path,
-                    "data": export_data,
-                    "timestamp": datetime.now(),
-                }
-            )
+            if db is not None:
+                try:
+                    check_mongodb_connection()
+                    db["exports"].insert_one(
+                        {
+                            "call_id": call_id,
+                            "export_path": export_path,
+                            "data": export_data,
+                            "timestamp": datetime.now(),
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to save to MongoDB (non-critical): {e}")
 
             return FileResponse(
                 export_path,
@@ -359,8 +481,8 @@ def create_app() -> FastAPI:
         except HTTPException:
             raise
         except Exception as e:  # pragma: no cover - defensive
-            logger.error(f"Export failed for {conversation_id}: {e}")
-            raise HTTPException(status_code=500, detail="Export failed")
+            logger.error(f"Export failed for {call_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
     @app.get("/api/export/{call_id}/pdf")
     def export_pdf(call_id: str) -> FileResponse:
@@ -376,6 +498,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail="PDF export requires reportlab package")
 
         try:
+            check_mongodb_connection()
             call_doc = db.calls.find_one({"call_id": call_id})
             if not call_doc:
                 raise HTTPException(status_code=404, detail="Call not found")
@@ -528,6 +651,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail="CSV export requires csv and io modules")
 
         try:
+            check_mongodb_connection()
             call_doc = db.calls.find_one({"call_id": call_id})
             if not call_doc:
                 raise HTTPException(status_code=404, detail="Call not found")
@@ -605,20 +729,237 @@ def create_app() -> FastAPI:
             logger.error(f"CSV export failed for {call_id}: {e}")
             raise HTTPException(status_code=500, detail="CSV export failed")
 
+    def _run_analysis_background(call_id: str, audio_path: str, filename: str):
+        """Run analysis in background thread with progress updates."""
+        try:
+            # Update progress: Transcription (0-20%)
+            db.calls.update_one(
+                {"call_id": call_id},
+                {"$set": {"status": "processing", "progress": 10, "updated_at": datetime.now()}},
+            )
+            logger.info(f"[{call_id}] Starting transcription...")
+            transcription = demo_system.audio_processor.transcribe_audio(audio_path, call_id)
+            
+            db.calls.update_one(
+                {"call_id": call_id},
+                {"$set": {"progress": 20, "updated_at": datetime.now()}},
+            )
+            logger.info(f"[{call_id}] Starting diarization...")
+            segments = demo_system.audio_processor.perform_speaker_diarization(audio_path, call_id)
+            
+            db.calls.update_one(
+                {"call_id": call_id},
+                {"$set": {"progress": 40, "updated_at": datetime.now()}},
+            )
+            logger.info(f"[{call_id}] Processing segments...")
+            processed_segments = demo_system.text_processor.segment_conversation(
+                transcription.get("text", ""),
+                segments,
+                call_id,
+                transcription_segments=transcription.get("segments", []),
+            )
+            
+            db.calls.update_one(
+                {"call_id": call_id},
+                {"$set": {"progress": 60, "updated_at": datetime.now()}},
+            )
+            logger.info(f"[{call_id}] Extracting features...")
+            audio_features = demo_system.audio_processor.extract_audio_features(audio_path)
+
+            db.calls.update_one(
+                {"call_id": call_id},
+                {"$set": {"progress": 80, "updated_at": datetime.now()}},
+            )
+            logger.info(f"[{call_id}] Running ML analysis...")
+            result = demo_system.analyzer.analyze_conversation(
+                audio_path=audio_path,
+                segments=processed_segments,
+                audio_features=audio_features,
+                call_id=call_id,
+            )
+
+            # Mask PII
+            for seg in result.get("sentiment_analysis", []):
+                seg["text"] = dashboard.mask_pii(seg["text"])
+            result["summary"] = dashboard.mask_pii(result.get("summary", ""))
+
+            # Transform sentiment_scores to match frontend format
+            sentiment_scores_formatted = []
+            sentiment_analysis = result.get("sentiment_analysis", [])
+            for seg in sentiment_analysis:
+                sentiment_scores_formatted.append({
+                    "timestamp": seg.get("start_time", 0),
+                    "score": seg.get("score", 0),
+                    "label": seg.get("sentiment", "neutral")
+                })
+            
+            # Transform key_phrases from sentiment_analysis segments
+            key_phrases_formatted = {"positive": [], "negative": []}
+            all_phrases = []
+            for seg in sentiment_analysis:
+                # Extract phrases from each segment
+                seg_phrases = seg.get("key_phrases", [])
+                if isinstance(seg_phrases, list):
+                    all_phrases.extend(seg_phrases)
+                # Also check conversation_key_phrases
+                conv_phrases = seg.get("conversation_key_phrases", [])
+                if isinstance(conv_phrases, list):
+                    all_phrases.extend(conv_phrases)
+            
+            # Sort and categorize phrases
+            for phrase in all_phrases:
+                if isinstance(phrase, dict):
+                    score = phrase.get("sentiment_score", phrase.get("score", 0))
+                    phrase_text = phrase.get("phrase", "")
+                    if score > 0 and phrase_text:
+                        key_phrases_formatted["positive"].append({
+                            "phrase": phrase_text,
+                            "score": abs(score)
+                        })
+                    elif score < 0 and phrase_text:
+                        key_phrases_formatted["negative"].append({
+                            "phrase": phrase_text,
+                            "score": abs(score)
+                        })
+            
+            # Remove duplicates and limit to top 10 each
+            def dedupe_phrases(phrases):
+                seen = set()
+                unique = []
+                for p in phrases:
+                    key = p["phrase"].lower()
+                    if key not in seen:
+                        seen.add(key)
+                        unique.append(p)
+                return sorted(unique, key=lambda x: x["score"], reverse=True)[:10]
+            
+            key_phrases_formatted["positive"] = dedupe_phrases(key_phrases_formatted["positive"])
+            key_phrases_formatted["negative"] = dedupe_phrases(key_phrases_formatted["negative"])
+            
+            # Transform emotions from emotion_analysis
+            emotions_formatted = {"neutral": 0.0, "happiness": 0.0, "anger": 0.0, "sadness": 0.0, "frustration": 0.0}
+            emotion_analysis = result.get("emotion_analysis", [])
+            if emotion_analysis:
+                # Aggregate emotion probabilities across all segments
+                emotion_probs = {"neutral": [], "happiness": [], "anger": [], "sadness": [], "frustration": []}
+                for emo_result in emotion_analysis:
+                    probs = emo_result.get("probabilities", {})
+                    if isinstance(probs, dict):
+                        for emotion in emotion_probs.keys():
+                            if emotion in probs:
+                                emotion_probs[emotion].append(probs[emotion])
+                
+                # Average probabilities
+                for emotion in emotions_formatted.keys():
+                    if emotion_probs[emotion]:
+                        emotions_formatted[emotion] = float(np.mean(emotion_probs[emotion]))
+            
+            # Get sale probability and avg sentiment
+            sale_prediction = result.get("sale_prediction", {})
+            sale_probability = sale_prediction.get("sale_probability", 0) if isinstance(sale_prediction, dict) else 0
+            
+            conversation_metrics = result.get("conversation_metrics", {})
+            avg_sentiment = conversation_metrics.get("avg_sentiment", np.mean([s["score"] for s in sentiment_analysis]) if sentiment_analysis else 0)
+
+            # Count unique participants
+            participants = len(set([s.get("speaker", "Unknown") for s in processed_segments]))
+            
+            # Update MongoDB with results
+            db.calls.update_one(
+                {"call_id": call_id},
+                {
+                    "$set": {
+                        "status": "completed",
+                        "progress": 100,
+                        "duration": float(result.get("duration", 0)),
+                        "participants": participants,
+                        "avg_sentiment": float(avg_sentiment),
+                        "sale_probability": float(sale_probability),
+                        "sentiment_scores": sentiment_scores_formatted,
+                        "emotions": emotions_formatted,
+                        "key_phrases": key_phrases_formatted,
+                        "result": result,
+                        "updated_at": datetime.now(),
+                    }
+                },
+            )
+
+            # Also save to analyses collection for backward compatibility
+            db.analyses.insert_one(
+                {
+                    "conversation_id": call_id,
+                    "result": result,
+                    "audio_path": audio_path,
+                    "timestamp": datetime.now(),
+                }
+            )
+
+            logger.info(f"[{call_id}] Analysis completed successfully")
+        except Exception as e:
+            logger.error(f"[{call_id}] Analysis failed: {e}", exc_info=True)
+            db.calls.update_one(
+                {"call_id": call_id},
+                {
+                    "$set": {
+                        "status": "failed",
+                        "progress": 0,
+                        "error": str(e),
+                        "updated_at": datetime.now(),
+                    }
+                },
+            )
+
     @app.post("/api/analyze")
     def start_analysis(payload: StartAnalysisRequest) -> JSONResponse:
-        """Start analysis for uploaded file (status update only)."""
+        """Start analysis for uploaded file (runs in background)."""
         try:
             call_id = payload.call_id
 
+            check_mongodb_connection()
             call_doc = db.calls.find_one({"call_id": call_id})
             if not call_doc:
                 raise HTTPException(status_code=404, detail="Call not found")
 
+            # Check if already processing or completed
+            current_status = call_doc.get("status", "unknown")
+            if current_status == "processing":
+                return JSONResponse(
+                    {
+                        "message": "Analysis already in progress",
+                        "call_id": call_id,
+                        "status": "processing",
+                    }
+                )
+            if current_status == "completed":
+                return JSONResponse(
+                    {
+                        "message": "Analysis already completed",
+                        "call_id": call_id,
+                        "status": "completed",
+                    }
+                )
+
+            # Update status to processing
             db.calls.update_one(
                 {"call_id": call_id},
-                {"$set": {"status": "processing", "updated_at": datetime.now()}},
+                {"$set": {"status": "processing", "progress": 0, "updated_at": datetime.now()}},
             )
+
+            # Get audio path from call document
+            audio_path = call_doc.get("audio_path")
+            if not audio_path or not os.path.exists(audio_path):
+                raise HTTPException(status_code=404, detail="Audio file not found")
+
+            filename = call_doc.get("filename", "unknown")
+
+            # Start background analysis thread
+            analysis_thread = threading.Thread(
+                target=lambda: _run_analysis_background(
+                    call_id, audio_path, filename
+                ),
+                daemon=True,
+            )
+            analysis_thread.start()
 
             return JSONResponse(
                 {
@@ -631,27 +972,61 @@ def create_app() -> FastAPI:
             raise
         except Exception as e:  # pragma: no cover
             logger.error(f"Analysis start failed: {e}")
-            raise HTTPException(status_code=500, detail="Analysis start failed")
+            raise HTTPException(status_code=500, detail=f"Analysis start failed: {str(e)}")
 
     @app.get("/api/results/{call_id}")
     def get_results(call_id: str) -> JSONResponse:
         """Get analysis results for a call."""
         try:
+            check_mongodb_connection()
             call_doc = db.calls.find_one({"call_id": call_id})
             if not call_doc:
                 raise HTTPException(status_code=404, detail="Call not found")
 
+            # Ensure sentiment_scores format matches frontend expectations
+            sentiment_scores = call_doc.get("sentiment_scores", [])
+            if sentiment_scores and isinstance(sentiment_scores, list):
+                # Verify each item has required fields
+                formatted_scores = []
+                for score in sentiment_scores:
+                    if isinstance(score, dict):
+                        formatted_scores.append({
+                            "timestamp": score.get("timestamp", score.get("start_time", 0)),
+                            "score": score.get("score", 0),
+                            "label": score.get("label", score.get("sentiment", "neutral"))
+                        })
+                sentiment_scores = formatted_scores
+
+            # Ensure emotions format matches frontend expectations
+            emotions = call_doc.get("emotions", {})
+            if not isinstance(emotions, dict):
+                emotions = {}
+            # Ensure all required emotion keys exist
+            required_emotions = ["neutral", "happiness", "anger", "sadness", "frustration"]
+            for emotion in required_emotions:
+                if emotion not in emotions:
+                    emotions[emotion] = 0.0
+
+            # Ensure key_phrases format matches frontend expectations
+            key_phrases = call_doc.get("key_phrases", {"positive": [], "negative": []})
+            if not isinstance(key_phrases, dict):
+                key_phrases = {"positive": [], "negative": []}
+            if "positive" not in key_phrases:
+                key_phrases["positive"] = []
+            if "negative" not in key_phrases:
+                key_phrases["negative"] = []
+
             return JSONResponse(
                 {
                     "call_id": call_id,
-                    "sentiment_scores": call_doc.get("sentiment_scores", []),
-                    "emotions": call_doc.get("emotions", {}),
-                    "sale_probability": call_doc.get("sale_probability", 0),
-                    "key_phrases": call_doc.get("key_phrases", {"positive": [], "negative": []}),
+                    "sentiment_scores": sentiment_scores,
+                    "emotions": emotions,
+                    "sale_probability": float(call_doc.get("sale_probability", 0)),
+                    "key_phrases": key_phrases,
                     "summary": {
-                        "avg_sentiment": call_doc.get("avg_sentiment", 0),
-                        "total_duration": call_doc.get("duration", 0),
-                        "participants": call_doc.get("participants", 2),
+                        "avg_sentiment": float(call_doc.get("avg_sentiment", 0)),
+                        "total_duration": float(call_doc.get("duration", 0)),
+                        "participants": int(call_doc.get("participants", 2)),
                     },
                 }
             )
@@ -665,6 +1040,7 @@ def create_app() -> FastAPI:
     def get_status(call_id: str) -> JSONResponse:
         """Get analysis status for a call."""
         try:
+            check_mongodb_connection()
             call_doc = db.calls.find_one({"call_id": call_id})
             if not call_doc:
                 raise HTTPException(status_code=404, detail="Call not found")
@@ -686,6 +1062,7 @@ def create_app() -> FastAPI:
     def get_history() -> JSONResponse:
         """Get call history."""
         try:
+            check_mongodb_connection()
             calls = list(
                 db.calls.find(
                     {},
@@ -702,10 +1079,30 @@ def create_app() -> FastAPI:
                 ).sort("timestamp", -1)
             )
 
+            # Format response to match CallHistoryItem interface
+            formatted_calls = []
             for call in calls:
-                call["_id"] = str(call["_id"])
+                # Convert timestamp to ISO string if it's a datetime object
+                timestamp = call.get("timestamp")
+                if isinstance(timestamp, datetime):
+                    timestamp = timestamp.isoformat()
+                elif timestamp is None:
+                    timestamp = datetime.now().isoformat()
+                else:
+                    timestamp = str(timestamp)
 
-            return JSONResponse(calls)
+                formatted_calls.append({
+                    "call_id": call.get("call_id", ""),
+                    "filename": call.get("filename", "unknown"),
+                    "timestamp": timestamp,
+                    "duration": float(call.get("duration", 0)),
+                    "avg_sentiment": float(call.get("avg_sentiment", 0)),
+                    "sale_probability": float(call.get("sale_probability", 0)),
+                    "participants": int(call.get("participants", 0)),
+                    "status": call.get("status", "unknown"),
+                })
+
+            return JSONResponse(formatted_calls)
         except Exception as e:  # pragma: no cover
             logger.error(f"History retrieval failed: {e}")
             raise HTTPException(status_code=500, detail="History retrieval failed")
@@ -713,20 +1110,26 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health_check() -> JSONResponse:
         """Health check endpoint."""
-        try:
-            db.command("ping")
-            return JSONResponse(
-                {
-                    "status": "healthy",
-                    "timestamp": datetime.now().isoformat(),
-                    "version": "1.0.0",
-                }
-            )
-        except Exception as e:  # pragma: no cover
-            logger.error(f"Health check failed: {e}")
-            return JSONResponse(
-                {"status": "unhealthy", "error": str(e)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        health_status = {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "version": "1.0.0",
+            "mongodb": "connected" if db is not None else "disconnected"
+        }
+        
+        if db is not None:
+            try:
+                db.command("ping")
+            except Exception as e:
+                logger.error(f"MongoDB health check failed: {e}")
+                health_status["mongodb"] = "error"
+                health_status["mongodb_error"] = str(e)
+        else:
+            health_status["status"] = "degraded"
+            health_status["mongodb"] = "not_configured"
+        
+        status_code = status.HTTP_200_OK if health_status["status"] == "healthy" else status.HTTP_503_SERVICE_UNAVAILABLE
+        return JSONResponse(health_status, status_code=status_code)
 
     return app
 

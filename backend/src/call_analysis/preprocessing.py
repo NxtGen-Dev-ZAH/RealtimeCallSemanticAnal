@@ -1616,12 +1616,13 @@ class AudioProcessor:
             logger.error(f"Pyannote.audio diarization failed: {e}")
             raise ValueError(f"Speaker diarization failed: {str(e)}")
     
-    def extract_audio_features(self, audio_path: str) -> Dict:
+    def extract_audio_features(self, audio_path: str, n_mfcc: int = 40) -> Dict:
         """
         Extract audio features for emotion detection (FR-5: CNN+LSTM).
         
         Args:
             audio_path: Path to audio file.
+            n_mfcc: Number of MFCC coefficients (13-40, default: 40)
             
         Returns:
             Dictionary of audio features.
@@ -1629,13 +1630,30 @@ class AudioProcessor:
         try:
             audio_path = self.validate_audio_format(audio_path)
             y, sr = librosa.load(audio_path, sr=16000)  # Match Whisper's default
+            
+            # MFCC: 13-40 coefficients (per guide.txt requirement)
+            mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc)
+            
+            # Mel-Spectrogram: 2D format for CNN input
+            mel_spec = librosa.feature.melspectrogram(
+                y=y, sr=sr,
+                n_mels=128,  # Standard for emotion recognition
+                fmax=8000,
+                hop_length=512
+            )
+            # Convert to dB scale (log-mel)
+            mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
+            
+            # Chroma features (optimized)
+            chroma = librosa.feature.chroma_stft(y=y, sr=sr, hop_length=512)
+            
             features = {
-                "mfcc": librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13),
+                "mfcc": mfcc,  # (n_mfcc, time_frames)
+                "mel_spectrogram": mel_spec_db,  # (n_mels, time_frames) - 2D format
                 "spectral_centroid": librosa.feature.spectral_centroid(y=y, sr=sr),
                 "spectral_rolloff": librosa.feature.spectral_rolloff(y=y, sr=sr),
                 "zero_crossing_rate": librosa.feature.zero_crossing_rate(y),
-                "chroma": librosa.feature.chroma_stft(y=y, sr=sr),
-                "mel_spectrogram": librosa.feature.melspectrogram(y=y, sr=sr),
+                "chroma": chroma,
                 "duration": librosa.get_duration(y=y, sr=sr),
                 "sample_rate": sr
             }

@@ -16,11 +16,15 @@ export function HistorySection() {
   }, []);
 
   const fetchHistory = async () => {
+    setLoading(true);
     try {
       const data = await apiService.getHistory();
-      setCalls(data);
+      setCalls(data || []);
     } catch (error: any) {
-      toast.error(`Failed to fetch history: ${error.message}`);
+      console.error('Error fetching history:', error);
+      const errorMessage = error?.message || 'Failed to fetch call history';
+      toast.error(errorMessage);
+      setCalls([]); // Set empty array on error
     } finally {
       setLoading(false);
     }

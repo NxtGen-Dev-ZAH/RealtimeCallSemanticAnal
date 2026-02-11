@@ -7,6 +7,7 @@ import SaleGauge from './SaleGauge';
 import KeyPhrases from './KeyPhrases';
 import { TrendingUp, TrendingDown, Users, Clock, Download, FileText, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { apiService } from '@/lib/api';
 import type { CallResults } from '@/lib/types';
 
 interface AnalysisDashboardProps {
@@ -17,26 +18,25 @@ const AnalysisDashboard = ({ results }: AnalysisDashboardProps) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [isExporting, setIsExporting] = useState(false);
 
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
+
   const handleExportPDF = async () => {
     setIsExporting(true);
     try {
-      const response = await fetch(`/api/export/${results.call_id}/pdf`);
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${results.call_id}_report.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        toast.success('PDF report downloaded successfully!');
-      } else {
-        toast.error('Failed to export PDF report');
-      }
-    } catch (error) {
-      toast.error('Error exporting PDF report');
+      const blob = await apiService.exportPDF(results.call_id);
+      downloadBlob(blob, `${results.call_id}_report.pdf`);
+      toast.success('PDF report downloaded successfully!');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to export PDF report');
     } finally {
       setIsExporting(false);
     }
@@ -45,23 +45,11 @@ const AnalysisDashboard = ({ results }: AnalysisDashboardProps) => {
   const handleExportJSON = async () => {
     setIsExporting(true);
     try {
-      const response = await fetch(`/api/export/${results.call_id}`);
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${results.call_id}_analysis.json`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        toast.success('JSON data downloaded successfully!');
-      } else {
-        toast.error('Failed to export JSON data');
-      }
-    } catch (error) {
-      toast.error('Error exporting JSON data');
+      const blob = await apiService.exportJSON(results.call_id);
+      downloadBlob(blob, `${results.call_id}_analysis.json`);
+      toast.success('JSON data downloaded successfully!');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to export JSON data');
     } finally {
       setIsExporting(false);
     }
@@ -70,23 +58,11 @@ const AnalysisDashboard = ({ results }: AnalysisDashboardProps) => {
   const handleExportCSV = async () => {
     setIsExporting(true);
     try {
-      const response = await fetch(`/api/export/${results.call_id}/csv`);
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${results.call_id}_analysis.csv`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        toast.success('CSV data downloaded successfully!');
-      } else {
-        toast.error('Failed to export CSV data');
-      }
-    } catch (error) {
-      toast.error('Error exporting CSV data');
+      const blob = await apiService.exportCSV(results.call_id);
+      downloadBlob(blob, `${results.call_id}_analysis.csv`);
+      toast.success('CSV data downloaded successfully!');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to export CSV data');
     } finally {
       setIsExporting(false);
     }
@@ -256,7 +232,12 @@ const AnalysisDashboard = ({ results }: AnalysisDashboardProps) => {
         {activeTab === 'phrases' && (
           <div className="card">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Key Phrases</h3>
-            <KeyPhrases phrases={results.key_phrases} />
+            <KeyPhrases 
+              phrases={{
+                positive: results.key_phrases.positive.map(p => p.phrase),
+                negative: results.key_phrases.negative.map(p => p.phrase)
+              }} 
+            />
           </div>
         )}
       </div>

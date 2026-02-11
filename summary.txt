@@ -1,0 +1,38 @@
+Project Core and Motivation
+The project aims to develop an AI-powered multimodal system specifically designed for call center interactions. It addresses the limitations of traditional text-only sentiment analysis and expensive proprietary commercial solutions by providing an open-source, explainable, and cost-effective framework.
++3
+
+Technical Architecture
+The system integrates several state-of-the-art technologies to analyze both what is said and how it is said:
+
+
+Automatic Speech Recognition (ASR): Uses Whisper ASR for accurate transcription.
++3
+
+
+Speaker Diarization: Employs Pyannote.audio to distinguish between "Customer" and "Agent" voices.
++2
+
+
+Textual Analysis: Utilizes DistilBERT and FinBERT transformer models for sentiment classification.
++3
+
+
+Acoustic Analysis: Uses a CNN+LSTM hybrid network to recognize emotions (like anger or frustration) from tone, pitch, and dynamics.
++2
+
+
+Predictive Modeling: Fuses features using XGBoost to forecast sales conversion probabilities.
++1
+
+Key Deliverables and Functions
+
+Interactive Dashboards: Built with React and Flask/FastAPI to visualize real-time sentiment trends and performance insights.
++2
+
+
+Conversational Dynamics: The system tracks interruptions, hesitation cues, and "sentiment drift" throughout a call.
++1
+
+
+Enterprise Integration: Designed to be extensible for integration with existing CRM systems.

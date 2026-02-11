@@ -2,38 +2,69 @@
 
 An AI-powered sentiment analysis system that predicts sale probability using multimodal data from call center recordings.
 
-## Features
+## 🎯 Project Status
 
+**Overall Completion:** ~80%  
+**Models Trained:** ✅ Emotion Model (CNN+LSTM) | ✅ Sale Predictor (XGBoost)  
+**Integration:** ✅ Frontend-Backend API Complete  
+**Production Ready:** ⚠️ Testing & Validation Ongoing
+
+---
+
+## ✨ Features
+
+### Core Functionality
 - **Multimodal Analysis**: Combines audio emotion detection and text sentiment analysis
 - **Sale Prediction**: Predicts probability of sale (0-100%) based on conversation analysis
-- **Speaker Diarization**: Identifies and separates different speakers in calls
+- **Speaker Diarization**: Identifies and separates different speakers in calls using Pyannote.audio
 - **Real-time Dashboard**: Visual insights with sentiment curves and conversion metrics
-- **Cost-Effective**: Uses open-source tools and student-friendly technologies
+- **Key Phrase Extraction**: Automatically identifies important phrases contributing to sentiment
+- **Filler Word Detection**: Detects and counts filler words (um, uh, like, etc.)
+- **Confidence Intervals**: Provides prediction uncertainty estimation
 
-## System Architecture
+### Advanced Features
+- **Dual Sentiment Models**: Supports both DistilBERT (general) and FinBERT (financial domain)
+- **Trained ML Models**: Pre-trained emotion detection and sale prediction models
+- **Async Processing**: Non-blocking audio upload and analysis workflow
+- **Export Capabilities**: PDF, CSV, and JSON export formats
+- **MongoDB Integration**: Persistent storage with MongoDB Atlas support
+- **PII Masking**: Automatic masking of personally identifiable information
+
+---
+
+## 🏗️ System Architecture
 
 ### Modules
-1. **Data Preprocessing**: Audio transcription and speaker separation
-2. **Feature Extraction**: Audio and text feature engineering
-3. **Sentiment & Emotion Models**: BERT/DistilBERT for text, CNN+LSTM for audio
-4. **Sale Prediction Model**: XGBoost/LSTM for probability prediction
-5. **Visualization Dashboard**: Web-based analytics interface
+1. **Data Preprocessing**: Audio transcription (Whisper ASR) and speaker separation (Pyannote.audio)
+2. **Feature Extraction**: Audio (MFCC, spectral, chroma) and text (BERT embeddings) feature engineering
+3. **Sentiment & Emotion Models**: 
+   - **Sentiment**: DistilBERT/FinBERT for text analysis
+   - **Emotion**: CNN+LSTM hybrid network for acoustic emotion recognition
+4. **Sale Prediction Model**: XGBoost classifier with probability calibration
+5. **Visualization Dashboard**: React-based web interface with interactive charts
 
 ### Technologies
-- **Backend**: Python 3.10, PyTorch 2.2, Flask/FastAPI
-- **ML Models**: Hugging Face Transformers, Whisper, Pyannote.audio
-- **Frontend**: React 18, Plotly.js
-- **Database**: PostgreSQL 15, MongoDB
+- **Backend**: Python 3.10+, PyTorch 2.2+, FastAPI
+- **ML Models**: Hugging Face Transformers, OpenAI Whisper, Pyannote.audio
+- **Frontend**: Next.js 14, React 18, TypeScript, Tailwind CSS
+- **Database**: MongoDB (Atlas supported)
+- **Visualization**: Plotly.js, Recharts
 
-## Quick Start
+---
 
-### Option 1: Automated Setup
-```bash
-python setup.py
-```
+## 🚀 Quick Start
 
-### Option 2: Manual Setup
-1. Install dependencies using **uv** (recommended):
+### Prerequisites
+- Python 3.10 or higher
+- Node.js 18+ and npm/yarn
+- MongoDB (local or Atlas)
+- Hugging Face account (for model access)
+
+### Installation
+
+#### 1. Backend Setup
+
+**Using uv (Recommended):**
 ```bash
 # Install uv if not already installed
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -54,102 +85,340 @@ cd backend
 pip install -e .
 ```
 
-2. Set up environment variables:
+#### 2. Environment Configuration
+
+Create a `.env` file in the project root:
+
 ```bash
 # Copy the environment template
 cp env_template.txt .env
-
-# Edit .env file with your configuration
-# At minimum, set your Hugging Face token:
-# HF_TOKEN=your_token_here
 ```
 
-3. Install spaCy model (for PII masking):
+**Required Environment Variables:**
+```env
+# Hugging Face Token (Required for Whisper and Pyannote)
+HF_TOKEN=your_huggingface_token_here
+
+# MongoDB Connection (Required for data persistence)
+MONGODB_URI=mongodb://localhost:27017/  # or mongodb+srv://... for Atlas
+MONGODB_DATABASE=call_center_db
+MONGODB_ENABLED=true
+
+# Sentiment Model Selection
+SENTIMENT_MODEL=distilbert  # Options: 'distilbert' or 'finbert'
+
+# Optional: File Upload Configuration
+UPLOAD_FOLDER=uploads
+MAX_CONTENT_LENGTH=104857600  # 100MB
+```
+
+#### 3. Install spaCy Model (for PII masking)
 ```bash
 python -m spacy download en_core_web_sm
 ```
 
-4. Run the demo:
+#### 4. Frontend Setup
 ```bash
-python run_demo.py
+cd frontend
+npm install
+# or
+yarn install
 ```
 
-5. Start the web dashboard:
+#### 5. Start the Application
+
+**Backend (FastAPI):**
 ```bash
-python run_web_app.py
+cd backend
+python -m uvicorn src.call_analysis.web_app_fastapi:app --reload --port 5000
 ```
 
-### Option 3: Stakeholder Presentation
+**Frontend (Next.js):**
 ```bash
-python presentation_demo.py
+cd frontend
+npm run dev
+# or
+yarn dev
 ```
 
-### Access the System
-- **Demo Mode**: Run `python run_demo.py` for command-line demo
-- **Web Dashboard**: Run `python run_web_app.py` and visit http://localhost:5000
-- **Output Files**: Check the `output/` directory for generated reports and dashboards
+**Access the Application:**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:5000
+- API Docs: http://localhost:5000/docs
 
-## Environment Configuration
+---
 
-The system uses environment variables for configuration. Create a `.env` file from the template:
+## 📚 Usage
 
+### Upload and Analyze Audio
+
+1. **Upload Audio File**
+   - Navigate to http://localhost:3000
+   - Click "Upload Audio" and select a WAV, MP3, or M4A file
+   - File is uploaded and saved (status: pending)
+
+2. **Start Analysis**
+   - Click "Analyze" button
+   - Analysis runs asynchronously with progress updates
+   - Status updates: pending → processing → completed
+
+3. **View Results**
+   - Dashboard displays:
+     - Sentiment timeline chart
+     - Emotion distribution
+     - Sale probability gauge
+     - Key phrases (positive/negative)
+     - Conversational dynamics metrics
+
+4. **Export Results**
+   - Click export buttons for PDF, CSV, or JSON formats
+   - Files download automatically
+
+### API Usage
+
+**Upload Audio:**
 ```bash
-cp env_template.txt .env
+curl -X POST http://localhost:5000/api/upload \
+  -F "audio=@your_audio.wav"
 ```
 
-### Key Environment Variables:
+**Start Analysis:**
+```bash
+curl -X POST http://localhost:5000/api/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"call_id": "upload_20250101_120000"}'
+```
 
-- **HF_TOKEN**: Hugging Face token for accessing models (required for real transcription)
-- **MONGODB_URI**: MongoDB connection string (default: mongodb://localhost:27017/)
-- **DEMO_MODE**: Set to `True` for demo mode with simulated data
-- **USE_SIMULATED_AUDIO**: Set to `True` to use simulated audio instead of real processing
-- **PII_MASKING_ENABLED**: Set to `True` to mask personally identifiable information
+**Get Results:**
+```bash
+curl http://localhost:5000/api/results/upload_20250101_120000
+```
 
-### For Production Use:
-1. Set `DEMO_MODE=False`
-2. Set `USE_SIMULATED_AUDIO=False`
-3. Provide valid `HF_TOKEN` for real model access
-4. Configure MongoDB/PostgreSQL connections
-5. Set secure `FLASK_SECRET_KEY`
+**Get Status:**
+```bash
+curl http://localhost:5000/api/status/upload_20250101_120000
+```
 
-## Demo Features
+---
 
-### Core Functionality
-- **Multimodal Analysis**: Combines text sentiment and audio emotion detection
-- **Sale Prediction**: Predicts probability of sale (0-100%) using XGBoost model
-- **Speaker Diarization**: Identifies and separates customer vs agent speech
-- **Real-time Visualization**: Interactive charts and dashboards
+## 🧪 Model Training
 
-### Demo Data
-- **3 Sample Conversations**: Different scenarios (high/moderate/low sale potential)
-- **Realistic Scenarios**: Insurance inquiries, service complaints, product information requests
-- **Comprehensive Analysis**: Sentiment trends, emotion distribution, conversation flow
+### Emotion Model (CNN+LSTM)
 
-### Output Formats
-- **Interactive HTML Dashboard**: Plotly-based visualizations
-- **Text Reports**: Detailed analysis summaries
-- **JSON Export**: Raw data for further processing
-- **Comparison Reports**: Multi-conversation analysis
+Train on RAVDESS dataset:
+```bash
+python backend/scripts/train_emotion_model.py \
+  --data_dir data/raw/ravdess/ \
+  --epochs 50 \
+  --batch_size 32 \
+  --output_dir backend/models/
+```
 
-### Web Interface
-- **Modern UI**: Responsive design with real-time updates
-- **Interactive Charts**: Sentiment timelines, emotion distributions, sale probability gauges
-- **Export Functionality**: Download results in multiple formats
-- **API Endpoints**: RESTful API for integration
+**Output:**
+- `emotion_model.pth` - Trained model weights
+- `emotion_dataset_stats.json` - Normalization statistics
+- `emotion_training_history.json` - Training metrics
 
-## Intended Users
+### Sale Predictor (XGBoost)
+
+Train on labeled feature data:
+```bash
+python backend/scripts/train_sale_predictor.py \
+  --csv_path data/sale_training_data.csv \
+  --output_dir backend/models/ \
+  --early_stopping_rounds 20 \
+  --optimize_threshold
+```
+
+**Output:**
+- `sale_model.pkl` - Trained XGBoost model
+- `sale_model_imputer.pkl` - Feature imputation model
+- `sale_model_scaler.pkl` - Feature scaler (if used)
+- `sale_training_results.json` - Training metrics and optimal threshold
+- `sale_model_feature_importance.png` - Feature importance visualization
+- `sale_model_roc_curve.png` - ROC curve visualization
+
+---
+
+## 📊 API Endpoints
+
+### Core Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/upload` | Upload audio file (async) |
+| POST | `/api/analyze` | Start analysis for uploaded call |
+| GET | `/api/results/{call_id}` | Get analysis results |
+| GET | `/api/status/{call_id}` | Get analysis status |
+| GET | `/api/history` | Get call history |
+| GET | `/api/export/{call_id}` | Export JSON |
+| GET | `/api/export/{call_id}/pdf` | Export PDF report |
+| GET | `/api/export/{call_id}/csv` | Export CSV data |
+
+### Demo Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/conversations` | List demo conversations |
+| GET | `/api/analyze/{id}` | Analyze demo conversation |
+| GET | `/api/dashboard/{id}` | Generate dashboard HTML |
+| GET | `/api/insights` | Get agent insights |
+
+---
+
+## 🔧 Configuration
+
+### Sentiment Model Selection
+
+Choose between DistilBERT (general) or FinBERT (financial):
+
+**Via Environment Variable:**
+```env
+SENTIMENT_MODEL=finbert  # or 'distilbert'
+```
+
+**Via Code:**
+```python
+from src.call_analysis.models import SentimentAnalyzer
+
+# Use FinBERT for financial domain
+analyzer = SentimentAnalyzer(model_name='finbert')
+
+# Use DistilBERT for general sentiment
+analyzer = SentimentAnalyzer(model_name='distilbert')
+```
+
+### MongoDB Atlas Setup
+
+1. Create MongoDB Atlas account: https://www.mongodb.com/cloud/atlas
+2. Create cluster (free tier available)
+3. Configure network access (add IP whitelist)
+4. Create database user
+5. Get connection string
+6. Update `.env`:
+   ```env
+   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/call_center_db?retryWrites=true&w=majority
+   ```
+
+---
+
+## 📁 Project Structure
+
+```
+Call_Analysis/
+├── backend/
+│   ├── src/call_analysis/
+│   │   ├── models.py              # ML models (Sentiment, Emotion, Sale Predictor)
+│   │   ├── preprocessing.py       # Audio processing, transcription, diarization
+│   │   ├── feature_extraction.py  # Feature engineering
+│   │   ├── dashboard.py           # Dashboard generation
+│   │   ├── web_app_fastapi.py     # FastAPI application
+│   │   └── demo.py                # Demo system
+│   ├── scripts/
+│   │   ├── train_emotion_model.py
+│   │   ├── train_sale_predictor.py
+│   │   └── validate_trained_models.py
+│   ├── models/                    # Trained model files
+│   └── pyproject.toml
+├── frontend/
+│   ├── src/
+│   │   ├── app/                   # Next.js pages
+│   │   ├── components/            # React components
+│   │   └── lib/                   # API service, types
+│   └── package.json
+├── data/
+│   └── raw/                       # Training datasets
+├── output/                        # Generated reports and dashboards
+└── uploads/                       # Uploaded audio files
+```
+
+---
+
+## 🧪 Testing
+
+### Validate Trained Models
+```bash
+python backend/scripts/validate_trained_models.py
+```
+
+### Test API Endpoints
+```bash
+# Health check
+curl http://localhost:5000/health
+
+# Test upload
+curl -X POST http://localhost:5000/api/upload -F "audio=@test.wav"
+```
+
+### Run Integration Tests
+```bash
+cd backend
+pytest tests/
+```
+
+---
+
+## 📖 Documentation
+
+- **FYP Completion Guide**: `FYP_COMPLETION_README.md`
+- **Document Alignment**: `backend/docs/FYP_DOCUMENT_ALIGNMENT.md`
+- **Architecture**: `Document/ARCHITECTURE_DIAGRAMS.md`
+- **API Documentation**: http://localhost:5000/docs (when server is running)
+
+---
+
+## 🐛 Troubleshooting
+
+### Models Not Loading
+- Ensure model files exist in `backend/models/`
+- Check file permissions
+- Verify model paths in code
+
+### MongoDB Connection Failed
+- Check `MONGODB_URI` in `.env`
+- Verify network access (for Atlas)
+- Check IP whitelist (for Atlas)
+- Ensure MongoDB is running (for local)
+
+### Hugging Face Authentication Error
+- Verify `HF_TOKEN` is set correctly
+- Check token hasn't expired
+- Accept model licenses on Hugging Face website
+
+### Frontend Can't Connect to Backend
+- Ensure backend is running on port 5000
+- Check CORS configuration
+- Verify `NEXT_PUBLIC_API_URL` in frontend
+
+---
+
+## 👥 Intended Users
 
 - Call center managers
-- Sales agents
-- Sales analysts
-- Researchers
+- Sales agents and analysts
+- Customer service teams
+- Researchers studying conversation analysis
 
-## Project Timeline
+---
 
-- Weeks 1-2: Literature review & dataset collection
-- Weeks 3-4: Preprocessing
-- Weeks 5-6: Feature extraction
-- Weeks 7-8: Model training
-- Week 9: Dashboard development
-- Week 10: Integration & testing
-- Weeks 11-12: Documentation & report
+## 📝 License
+
+This project is part of a Final Year Project (FYP) submission.
+
+---
+
+## 🙏 Acknowledgments
+
+- OpenAI Whisper for ASR
+- Hugging Face for transformer models
+- Pyannote.audio for speaker diarization
+- RAVDESS dataset for emotion training
+
+---
+
+## 📞 Support
+
+For issues or questions:
+1. Check `FYP_COMPLETION_README.md` for common issues
+2. Review API documentation at `/docs`
+3. Check logs in `backend/logs/`

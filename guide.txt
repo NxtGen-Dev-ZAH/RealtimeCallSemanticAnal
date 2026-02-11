@@ -1,0 +1,43 @@
+# Technical Implementation Specification: Call Analysis System
+
+This document serves as the ground truth for transitioning from the current heuristic-based demo to the Finalized Research Architecture.
+
+## 1. Acoustic Emotion Recognition (SER)
+**Requirement:** Move beyond pitch-based "if-statements."
+- **Architecture:** Hybrid CNN + LSTM.
+- **Input:** 1D or 2D Mel-Spectrograms & 13-40 MFCCs (Mel-frequency cepstral coefficients).
+- **Layers:** - 3-4 Convolutional layers for spatial feature extraction from audio.
+    - Dropout layers (0.2 - 0.5) to prevent overfitting.
+    - LSTM layer to capture temporal emotional shifts during the dialogue.
+- **Classes:** Anger, Happiness, Sadness, Neutral, Frustration.
+
+
+
+## 2. Textual Sentiment Analysis
+**Requirement:** Deep contextual understanding of conversation.
+- **Model:** DistilBERT (distilbert-base-uncased).
+- **Processing:** - Must handle diarized segments (separating Agent and Customer).
+    - Must calculate "Sentiment Drift": The change in sentiment scores from the beginning of the call to the end.
+- **PII Masking:** Use spaCy `en_core_web_sm` to identify and redact PERSON, ORG, GPE, and DATE labels before storing transcripts in MongoDB.
+
+## 3. Multimodal Feature Fusion & Sale Prediction
+**Requirement:** Integrated predictive modeling using XGBoost.
+- **Fused Feature Vector:** 1. Textual Sentiment Mean/Variance.
+    2. Dominant Acoustic Emotion Probabilities.
+    3. Conversational Dynamics:
+        - Silence Ratio (Total silence / Call duration).
+        - Interruption Frequency (Overlapping speech counts).
+        - Talk-to-Listen Ratio.
+- **Model:** XGBoost Classifier (ensemble learning).
+- **Explainability:** Generate feature importance rankings to justify the "Sale Probability" score on the dashboard.
+
+
+
+## 4. System Workflow (The "Pipeline")
+1. **Ingestion:** Raw Audio (.wav).
+2. **Preprocessing:** Whisper (Text) + Pyannote (Diarization) + Librosa (MFCCs).
+3. **Inference:** Run DistilBERT and CNN+LSTM in parallel.
+4. **Fusion:** Combine outputs into a vector.
+5. **Prediction:** XGBoost returns Sale Probability.
+6. **Storage:** Save full analysis to MongoDB.
+7. **Visualization:** Serve results via FastAPI to the Next.js/Recharts frontend.
