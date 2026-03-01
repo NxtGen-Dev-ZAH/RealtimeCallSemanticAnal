@@ -101,6 +101,7 @@ node_modules/
 .yarn/
 .turbo/
 .next/
+*.tsbuildinfo
 dist/
 build/
 out/
@@ -114,3 +115,7 @@ frontend/.env*
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Keep frontend source library files versioned
+!frontend/src/lib/
+!frontend/src/lib/**
