@@ -101,7 +101,7 @@ export function AboutSection() {
           <div>
             <h4 className="text-lg font-semibold text-gray-100 mb-4">Backend</h4>
             <ul className="space-y-2 text-gray-200">
-              <li>• Python Flask - Web framework</li>
+              <li>• Python FastAPI - Web framework</li>
               <li>• MongoDB Atlas - Database</li>
               <li>• Hugging Face Transformers - AI models</li>
               <li>• Whisper - Speech recognition</li>
@@ -166,5 +166,6 @@ export function AboutSection() {
     </div>
   );
 }
+
 
 
