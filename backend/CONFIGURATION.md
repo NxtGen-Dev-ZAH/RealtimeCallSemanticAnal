@@ -22,7 +22,12 @@ PORT=8000
 # Model Configuration
 WHISPER_MODEL_SIZE=base
 BERT_MODEL_NAME=distilbert-base-uncased
+SENTIMENT_MODEL=distilbert
+# SENTIMENT_MODEL_PATH=
+# SENTIMENT_MODEL_REVISION=
+# SENTIMENT_LOCAL_FILES_ONLY=False
 PYANNOTE_AUDIO_MODEL=pyannote/speaker-diarization
+EMOTION_MODEL_PATH=backend/models/best_emotion_wav2vec2_v2/best_checkpoint
 
 # File Upload Configuration
 UPLOAD_FOLDER=uploads

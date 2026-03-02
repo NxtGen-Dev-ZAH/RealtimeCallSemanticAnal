@@ -25,7 +25,7 @@ flowchart LR
   end
 
   %% Backend
-  subgraph BE["Backend - Flask API"]
+  subgraph BE["Backend - FastAPI API"]
     direction TB
 
     API_Root["/ /health /api/* /"]:::io
@@ -131,7 +131,7 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant UI as Frontend (Next.js)
-  participant API as Flask API
+  participant API as FastAPI API
   participant PRE as Preprocessing/ML
   participant DB as MongoDB
   participant FS as Uploads Folder
@@ -164,5 +164,6 @@ sequenceDiagram
     API-->>UI: text/csv
   end
 ```
+
 
 

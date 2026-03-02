@@ -119,3 +119,5 @@ dmypy.json
 # Keep frontend source library files versioned
 !frontend/src/lib/
 !frontend/src/lib/**
+
+explanation/

@@ -52,9 +52,14 @@ def validate_emotion_model(model_path: str) -> bool:
         
         logger.info("✓ Emotion model loaded successfully")
         
-        # Test inference with dummy mel-spectrogram
+        # Test inference with dummy mel-spectrogram (legacy) and waveform (Wav2Vec2 backend)
         dummy_mel_spec = np.random.randn(128, 500)  # (n_mels, time_frames)
-        audio_features = {'mel_spectrogram': dummy_mel_spec}
+        dummy_waveform = np.random.randn(16000).astype(np.float32)  # 1 second @ 16k
+        audio_features = {
+            'mel_spectrogram': dummy_mel_spec,
+            'waveform': dummy_waveform,
+            'sample_rate': 16000
+        }
         
         result = detector.detect_emotion(audio_features)
         
@@ -174,7 +179,16 @@ def main():
     
     # Default model paths
     models_dir = Path(__file__).parent.parent / 'models'
-    emotion_model_path = models_dir / 'emotion_model.pth'
+    env_emotion_path = os.getenv('EMOTION_MODEL_PATH')
+    default_best_emotion_path = models_dir / 'best_emotion_wav2vec2' / 'best_checkpoint'
+    if env_emotion_path:
+        emotion_model_path = Path(env_emotion_path)
+    elif (models_dir / 'emotion_model.pth').exists():
+        emotion_model_path = models_dir / 'emotion_model.pth'
+    elif default_best_emotion_path.exists():
+        emotion_model_path = default_best_emotion_path
+    else:
+        emotion_model_path = models_dir / 'emotion_model.pth'
     sale_model_path = models_dir / 'sale_model.pkl'
     
     results = {}

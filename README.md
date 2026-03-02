@@ -5,7 +5,7 @@ An AI-powered sentiment analysis system that predicts sale probability using mul
 ## 🎯 Project Status
 
 **Overall Completion:** ~80%  
-**Models Trained:** ✅ Emotion Model (CNN+LSTM) | ✅ Sale Predictor (XGBoost)  
+**Models Trained:** Sale predictor available (`backend/models/sale_model.pkl`); emotion model checkpoint available (`backend/models/best_emotion_wav2vec2_v2/best_checkpoint`)
 **Integration:** ✅ Frontend-Backend API Complete  
 **Production Ready:** ⚠️ Testing & Validation Ongoing
 
@@ -24,7 +24,7 @@ An AI-powered sentiment analysis system that predicts sale probability using mul
 
 ### Advanced Features
 - **Dual Sentiment Models**: Supports both DistilBERT (general) and FinBERT (financial domain)
-- **Trained ML Models**: Pre-trained emotion detection and sale prediction models
+- **Model Training Pipeline**: Emotion and sale prediction training scripts are included (retraining supported)
 - **Async Processing**: Non-blocking audio upload and analysis workflow
 - **Export Capabilities**: PDF, CSV, and JSON export formats
 - **MongoDB Integration**: Persistent storage with MongoDB Atlas support
@@ -87,11 +87,11 @@ pip install -e .
 
 #### 2. Environment Configuration
 
-Create a `.env` file in the project root:
+Create a `.env` file in `backend/`:
 
 ```bash
 # Copy the environment template
-cp env_template.txt .env
+cp backend/env_template.txt backend/.env
 ```
 
 **Required Environment Variables:**
@@ -106,6 +106,7 @@ MONGODB_ENABLED=true
 
 # Sentiment Model Selection
 SENTIMENT_MODEL=distilbert  # Options: 'distilbert' or 'finbert'
+EMOTION_MODEL_PATH=backend/models/best_emotion_wav2vec2_v2/best_checkpoint
 
 # Optional: File Upload Configuration
 UPLOAD_FOLDER=uploads
@@ -130,7 +131,7 @@ yarn install
 **Backend (FastAPI):**
 ```bash
 cd backend
-python -m uvicorn src.call_analysis.web_app_fastapi:app --reload --port 5000
+python -m uvicorn src.call_analysis.web_app_fastapi:app --reload --port 8000
 ```
 
 **Frontend (Next.js):**
@@ -143,8 +144,8 @@ yarn dev
 
 **Access the Application:**
 - Frontend: http://localhost:3000
-- Backend API: http://localhost:5000
-- API Docs: http://localhost:5000/docs
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
 
 ---
 
@@ -178,46 +179,47 @@ yarn dev
 
 **Upload Audio:**
 ```bash
-curl -X POST http://localhost:5000/api/upload \
+curl -X POST http://localhost:8000/api/upload \
   -F "audio=@your_audio.wav"
 ```
 
 **Start Analysis:**
 ```bash
-curl -X POST http://localhost:5000/api/analyze \
+curl -X POST http://localhost:8000/api/analyze \
   -H "Content-Type: application/json" \
   -d '{"call_id": "upload_20250101_120000"}'
 ```
 
 **Get Results:**
 ```bash
-curl http://localhost:5000/api/results/upload_20250101_120000
+curl http://localhost:8000/api/results/upload_20250101_120000
 ```
 
 **Get Status:**
 ```bash
-curl http://localhost:5000/api/status/upload_20250101_120000
+curl http://localhost:8000/api/status/upload_20250101_120000
 ```
 
 ---
 
 ## 🧪 Model Training
 
-### Emotion Model (CNN+LSTM)
+### Emotion Model (Wav2Vec2 Recommended)
 
 Train on RAVDESS dataset:
 ```bash
-python backend/scripts/train_emotion_model.py \
+python backend/scripts/best_train_emotion_model.py \
+  --mode train \
   --data_dir data/raw/ravdess/ \
-  --epochs 50 \
-  --batch_size 32 \
-  --output_dir backend/models/
+  --epochs 30 \
+  --batch_size 8 \
+  --output_dir backend/models/best_emotion_wav2vec2_v2
 ```
 
 **Output:**
-- `emotion_model.pth` - Trained model weights
-- `emotion_dataset_stats.json` - Normalization statistics
-- `emotion_training_history.json` - Training metrics
+- `best_emotion_wav2vec2_v2/best_checkpoint/` - Trained Wav2Vec2 checkpoint
+- `best_emotion_training_summary.json` - Training summary
+- `best_emotion_training_history.json` - Training metrics
 
 ### Sale Predictor (XGBoost)
 
@@ -344,10 +346,10 @@ python backend/scripts/validate_trained_models.py
 ### Test API Endpoints
 ```bash
 # Health check
-curl http://localhost:5000/health
+curl http://localhost:8000/health
 
 # Test upload
-curl -X POST http://localhost:5000/api/upload -F "audio=@test.wav"
+curl -X POST http://localhost:8000/api/upload -F "audio=@test.wav"
 ```
 
 ### Run Integration Tests
@@ -363,7 +365,7 @@ pytest tests/
 - **FYP Completion Guide**: `FYP_COMPLETION_README.md`
 - **Document Alignment**: `backend/docs/FYP_DOCUMENT_ALIGNMENT.md`
 - **Architecture**: `Document/ARCHITECTURE_DIAGRAMS.md`
-- **API Documentation**: http://localhost:5000/docs (when server is running)
+- **API Documentation**: http://localhost:8000/docs (when server is running)
 
 ---
 
@@ -386,7 +388,7 @@ pytest tests/
 - Accept model licenses on Hugging Face website
 
 ### Frontend Can't Connect to Backend
-- Ensure backend is running on port 5000
+- Ensure backend is running on port 8000
 - Check CORS configuration
 - Verify `NEXT_PUBLIC_API_URL` in frontend
 
@@ -422,3 +424,6 @@ For issues or questions:
 1. Check `FYP_COMPLETION_README.md` for common issues
 2. Review API documentation at `/docs`
 3. Check logs in `backend/logs/`
+
+
+

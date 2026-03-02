@@ -444,7 +444,7 @@ Agile methodology will be
  
 Python 3.10, PyTorch 2.2,
  Hugging Face Transformers, Pyannote.audio, Librosa, Whisper, PostgreSQL 15,
- MongoDB, React 18, Flask/FastAPI.
+ MongoDB, React 18, FastAPI.
 
  
  
@@ -560,4 +560,5 @@ This project
  
 [5]
  Pyannote.audio
+
 

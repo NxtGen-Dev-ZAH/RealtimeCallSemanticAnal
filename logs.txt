@@ -1,0 +1,80 @@
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pyannote\database\util.py:182: SyntaxWarning: invalid escape sequence '\s'
+  sep="\s+",
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pyannote\database\util.py:216: SyntaxWarning: invalid escape sequence '\s'
+  sep="\s+",
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pyannote\database\util.py:253: SyntaxWarning: invalid escape sequence '\s'
+  sep="\s+",
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pyannote\database\util.py:284: SyntaxWarning: invalid escape sequence '\s'
+  data = pd.read_csv(file_uem, names=names, dtype=dtype, sep="\s+")
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pyannote\database\util.py:309: SyntaxWarning: invalid escape sequence '\s'
+  data = pd.read_csv(path, names=names, dtype=dtype, sep="\s+")
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pyannote\database\loader.py:93: SyntaxWarning: invalid escape sequence '\s'
+  file_trial, sep="\s+", names=["reference", "uri1", "uri2"]
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pyannote\database\loader.py:292: SyntaxWarning: invalid escape sequence '\s'
+  ctm, names=names, dtype=dtype, sep="\s+"
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pyannote\database\loader.py:357: SyntaxWarning: invalid escape sequence '\s'
+  mapping, names=names, dtype=dtype, sep="\s+"        
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pyannote\audio\core\io.py:212: UserWarning: torchaudio._backend.list_audio_backends has been deprecated. This deprecation is part of a large refactoring effort to transition TorchAudio into a maintenance phase. The decoding and encoding capabilities of PyTorch for both audio and video are being consolidated into TorchCodec. Please see https://github.com/pytorch/audio/issues/3902 for more information. It will be removed from the 2.9 release.
+  torchaudio.list_audio_backends()
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pydub\utils.py:300: SyntaxWarning: invalid escape sequence '\('
+  m = re.match('([su]([0-9]{1,2})p?) \(([0-9]{1,2}) bit\)$', token)
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pydub\utils.py:301: SyntaxWarning: invalid escape sequence '\('
+  m2 = re.match('([su]([0-9]{1,2})p?)( \(default\))?$', token)
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pydub\utils.py:310: SyntaxWarning: invalid escape sequence '\('
+  elif re.match('(flt)p?( \(default\))?$', token):    
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pydub\utils.py:314: SyntaxWarning: invalid escape sequence '\('
+  elif re.match('(dbl)p?( \(default\))?$', token):    
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\pydub\utils.py:170: RuntimeWarning: Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work
+  warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\webrtcvad.py:1: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.       
+  import pkg_resources
+WARNING:call_analysis.preprocessing:spaCy model 'en_core_web_sm' not found. PII masking will be limited.    
+WARNING:call_analysis.feature_extraction:spaCy model 'en_core_web_sm' not found. PII masking will be limited.
+WARNING:call_analysis.dashboard:spaCy model 'en_core_web_sm' not found. PII masking will be limited.        
+WARNING:call_analysis.demo:spaCy model 'en_core_web_sm' not found. PII masking will be limited.
+INFO:call_analysis.models:Loading sentiment analysis pipeline with model: distilbert-base-uncased-finetuned-sst-2-english...
+config.json: 100%|██████████| 629/629 [00:00<?, ?B/s]
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\huggingface_hub\file_download.py:143: UserWarning: `huggingface_hub` cache-system uses symlinks by default to efficiently store duplicated files but your machine does not support them in C:\Users\PMLS\.cache\huggingface\hub\models--distilbert-base-uncased-finetuned-sst-2-english. Caching files will still work but in a degraded version that might require more space on your disk. This warning can be disabled by setting the `HF_HUB_DISABLE_SYMLINKS_WARNING` environment variable. For more details, see https://huggingface.co/docs/huggingface_hub/how-to-cache#limitations.
+To support symlinks on Windows, you either need to activate Developer Mode or to run Python as an administrator. In order to activate developer mode, see this article: https://docs.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development
+  warnings.warn(message)
+Xet Storage is enabled for this repo, but the 'hf_xet' package is not installed. Falling back to regular HTTP download. For better performance, install the package with: `pip install huggingface_hub[hf_xet]` or `pip install hf_xet`
+WARNING:huggingface_hub.file_download:Xet Storage is enabled for this repo, but the 'hf_xet' package is not installed. Falling back to regular HTTP download. For better performance, install the package with: `pip install huggingface_hub[hf_xet]` or `pip install hf_xet` 
+model.safetensors:  35%|▎| 94.4M/268M [01:38<03:01, 9WARNING:  WatchFiles detected changes in 'src\call_analysis\web_app_fastapi.py'. Reloading...
+model.safetensors:  74%|▋| 199M/268M [41:38<14:20, 79
+'(MaxRetryError('HTTPSConnectionPool(host=\'huggingface.co\', port=443): Max retries exceeded with url: /distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors (Caused by NameResolutionError("HTTPSConnection(host=\'huggingface.co\', port=443): Failed to resolve \'huggingface.co\' ([Errno 11001] getaddrinfo failed)"))'), '(Request ID: d2696bfd-9c1c-4b12-99c7-eca53a483e6c)')' thrown while requesting HEAD https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors
+WARNING:huggingface_hub.utils._http:'(MaxRetryError('HTTPSConnectionPool(host=\'huggingface.co\', port=443): Max retries exceeded with url: /distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors (Caused by NameResolutionError("HTTPSConnection(host=\'huggingface.co\', port=443): Failed to resolve \'huggingface.co\' ([Errno 11001] getaddrinfo failed)"))'), '(Request ID: d2696bfd-9c1c-4b12-99c7-eca53a483e6c)')' thrown while requesting HEAD https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors
+Retrying in 1s [Retry 1/5].
+WARNING:huggingface_hub.utils._http:Retrying in 1s [Retry 1/5].
+'(MaxRetryError('HTTPSConnectionPool(host=\'huggingface.co\', port=443): Max retries exceeded with url: /distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors (Caused by NameResolutionError("HTTPSConnection(host=\'huggingface.co\', port=443): Failed to resolve \'huggingface.co\' ([Errno 11001] getaddrinfo failed)"))'), '(Request ID: 71e38926-cfd2-4c32-8215-2ac1fb055850)')' thrown while requesting HEAD https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors
+WARNING:huggingface_hub.utils._http:'(MaxRetryError('HTTPSConnectionPool(host=\'huggingface.co\', port=443): Max retries exceeded with url: /distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors (Caused by NameResolutionError("HTTPSConnection(host=\'huggingface.co\', port=443): Failed to resolve \'huggingface.co\' ([Errno 11001] getaddrinfo failed)"))'), '(Request ID: 71e38926-cfd2-4c32-8215-2ac1fb055850)')' thrown while requesting HEAD https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors
+Retrying in 2s [Retry 2/5].
+WARNING:huggingface_hub.utils._http:Retrying in 2s [Retry 2/5].
+'(MaxRetryError('HTTPSConnectionPool(host=\'huggingface.co\', port=443): Max retries exceeded with url: /distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors (Caused by NameResolutionError("HTTPSConnection(host=\'huggingface.co\', port=443): Failed to resolve \'huggingface.co\' ([Errno 11001] getaddrinfo failed)"))'), '(Request ID: cb30879e-cbd3-4e05-8a8e-7a4559fc6eba)')' thrown while requesting HEAD https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors
+WARNING:huggingface_hub.utils._http:'(MaxRetryError('HTTPSConnectionPool(host=\'huggingface.co\', port=443): Max retries exceeded with url: /distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors (Caused by NameResolutionError("HTTPSConnection(host=\'huggingface.co\', port=443): Failed to resolve \'huggingface.co\' ([Errno 11001] getaddrinfo failed)"))'), '(Request ID: cb30879e-cbd3-4e05-8a8e-7a4559fc6eba)')' thrown while requesting HEAD https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors
+Retrying in 4s [Retry 3/5].
+WARNING:huggingface_hub.utils._http:Retrying in 4s [Retry 3/5].
+'(MaxRetryError('HTTPSConnectionPool(host=\'huggingface.co\', port=443): Max retries exceeded with url: /distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors (Caused by NameResolutionError("HTTPSConnection(host=\'huggingface.co\', port=443): Failed to resolve \'huggingface.co\' ([Errno 11001] getaddrinfo failed)"))'), '(Request ID: f3b66f6e-e582-4646-8369-d088be909e6e)')' thrown while requesting HEAD https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors
+WARNING:huggingface_hub.utils._http:'(MaxRetryError('HTTPSConnectionPool(host=\'huggingface.co\', port=443): Max retries exceeded with url: /distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors (Caused by NameResolutionError("HTTPSConnection(host=\'huggingface.co\', port=443): Failed to resolve \'huggingface.co\' ([Errno 11001] getaddrinfo failed)"))'), '(Request ID: f3b66f6e-e582-4646-8369-d088be909e6e)')' thrown while requesting HEAD https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/model.safetensors
+Retrying in 8s [Retry 4/5].
+WARNING:huggingface_hub.utils._http:Retrying in 8s [Retry 4/5].
+Xet Storage is enabled for this repo, but the 'hf_xet' package is not installed. Falling back to regular HTTP download. For better performance, install the package with: `pip install huggingface_hub[hf_xet]` or `pip install hf_xet`
+WARNING:huggingface_hub.file_download:Xet Storage is enabled for this repo, but the 'hf_xet' package is not installed. Falling back to regular HTTP download. For better performance, install the package with: `pip install huggingface_hub[hf_xet]` or `pip install hf_xet` 
+model.safetensors: 100%|█| 268M/268M [01:03<00:00, 1.
+Falling back to torch.float32 because loading with the original dtype failed on the target device.
+tokenizer_config.json: 100%|█| 48.0/48.0 [00:00<?, ?B
+vocab.txt: 100%|██| 232k/232k [00:00<00:00, 1.04MB/s]
+Device set to use cpu
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\transformers\pipelines\text_classification.py:111: UserWarning: `return_all_scores` is now deprecated,  if want a similar functionality use `top_k=None` instead of `return_all_scores=True` or `top_k=1` instead of `return_all_scores=False`.
+  warnings.warn(
+INFO:call_analysis.models:Sentiment analysis pipeline loaded successfully
+INFO:call_analysis.models:Loading distilbert-base-uncased model for embeddings...
+tokenizer_config.json: 100%|█| 48.0/48.0 [00:00<?, ?B
+D:\RealtimeCallSemanticAnal\backend\.venv\Lib\site-packages\huggingface_hub\file_download.py:143: UserWarning: `huggingface_hub` cache-system uses symlinks by default to efficiently store duplicated files but your machine does not support them in C:\Users\PMLS\.cache\huggingface\hub\models--distilbert-base-uncased. Caching files will still work but in a degraded version that might require more space on your disk. This warning can be disabled by setting the `HF_HUB_DISABLE_SYMLINKS_WARNING` environment variable. For more details, see https://huggingface.co/docs/huggingface_hub/how-to-cache#limitations.
+To support symlinks on Windows, you either need to activate Developer Mode or to run Python as an administrator. In order to activate developer mode, see this article: https://docs.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development
+  warnings.warn(message)
+config.json: 100%|██████████| 483/483 [00:00<?, ?B/s] 
+vocab.txt: 100%|███| 232k/232k [00:00<00:00, 508kB/s] 
+tokenizer.json: 100%|█| 466k/466k [00:00<00:00, 680kB 
+Xet Storage is enabled for this repo, but the 'hf_xet' package is not installed. Falling back to regular HTTP download. For better performance, install the package with: `pip install huggingface_hub[hf_xet]` or `pip install hf_xet`
+WARNING:huggingface_hub.file_download:Xet Storage is enabled for this repo, but the 'hf_xet' package is not installed. Falling back to regular HTTP download. For better performance, install the package with: `pip install huggingface_hub[hf_xet]` or `pip install hf_xet` 
+model.safetensors:  23%|▏| 62.9M/268M [01:01<03:17, 1 

@@ -17,6 +17,11 @@ from pymongo import MongoClient
 import spacy
 import os
 
+try:
+    from config import Config  # type: ignore  # noqa: E402
+except ImportError:
+    Config = None
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -560,9 +565,12 @@ class Dashboard:
             results: Analysis results.
             call_id: Unique call identifier.
         """
+        if not Config or not getattr(Config, 'MONGODB_URI', None):
+            logger.debug("MongoDB not configured - skipping dashboard save")
+            return
         try:
-            client = MongoClient('mongodb://localhost:27017/')
-            db = client['call_center_db']
+            client = MongoClient(Config.MONGODB_URI, serverSelectionTimeoutMS=2000)
+            db = client[Config.MONGODB_DATABASE]
             collection = db['dashboards']
             collection.insert_one({
                 'call_id': call_id,

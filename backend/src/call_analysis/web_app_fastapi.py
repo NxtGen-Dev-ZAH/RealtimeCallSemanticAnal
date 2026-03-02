@@ -178,12 +178,25 @@ def create_app() -> FastAPI:
     def allowed_file(filename: str) -> bool:
         return "." in filename and filename.rsplit(".", 1)[1].lower() in Config.ALLOWED_EXTENSIONS
     
+    mongodb_unavailable_detail = (
+        "MongoDB is unavailable. Set a valid MONGODB_URI (MongoDB Atlas recommended), "
+        "verify Atlas Network Access allows your IP, then restart the backend."
+    )
+
     def check_mongodb_connection() -> None:
-        """Check if MongoDB is connected, raise HTTPException if not."""
+        """Check if MongoDB is connected and reachable, raise HTTPException if not."""
         if db is None:
             raise HTTPException(
                 status_code=503,
-                detail="MongoDB connection not available. Please check your MONGODB_URI configuration and ensure MongoDB Atlas network access is configured."
+                detail=mongodb_unavailable_detail,
+            )
+        try:
+            db.command("ping")
+        except Exception as exc:
+            logger.error(f"MongoDB ping failed: {exc}")
+            raise HTTPException(
+                status_code=503,
+                detail=mongodb_unavailable_detail,
             )
 
     # --------- Routes ----------
@@ -329,6 +342,10 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         """Upload audio file (async - only saves file, analysis triggered separately)."""
         try:
+            # Upload flow depends on MongoDB-backed state for analyze/status/results/history.
+            # Fail fast instead of accepting uploads that cannot be processed end-to-end.
+            check_mongodb_connection()
+
             # Accept both 'file' and 'audio' field names for compatibility
             upload_file = file if file else audio
             
@@ -374,31 +391,23 @@ def create_app() -> FastAPI:
             # Generate call_id
             call_id = f"upload_{timestamp}"
 
-            # Create MongoDB document with status 'pending' (analysis will be triggered separately)
-            # Handle MongoDB connection gracefully - allow upload even if DB is unavailable
-            if db is not None:
-                try:
-                    check_mongodb_connection()
-                    call_doc = {
-                        "call_id": call_id,
-                        "filename": filename,
-                        "audio_path": audio_path,
-                        "timestamp": datetime.now(),
-                        "status": "pending",
-                        "progress": 0,
-                        "duration": 0,
-                        "participants": 0,
-                        "avg_sentiment": 0,
-                        "sale_probability": 0,
-                        "sentiment_scores": [],
-                        "emotions": {},
-                        "key_phrases": {"positive": [], "negative": []},
-                    }
-                    db.calls.insert_one(call_doc)
-                except Exception as db_error:
-                    logger.warning(f"MongoDB save failed (non-critical): {db_error}. File uploaded but not saved to database.")
-            else:
-                logger.warning("MongoDB not available. File uploaded but not saved to database.")
+            # Create MongoDB document with status 'pending' (analysis is triggered separately).
+            call_doc = {
+                "call_id": call_id,
+                "filename": filename,
+                "audio_path": audio_path,
+                "timestamp": datetime.now(),
+                "status": "pending",
+                "progress": 0,
+                "duration": 0,
+                "participants": 0,
+                "avg_sentiment": 0,
+                "sale_probability": 0,
+                "sentiment_scores": [],
+                "emotions": {},
+                "key_phrases": {"positive": [], "negative": []},
+            }
+            db.calls.insert_one(call_doc)
 
             return JSONResponse(
                 {

@@ -34,6 +34,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def resolve_emotion_model_path(models_dir: Path) -> Path:
+    """Resolve emotion model path with env override and best-checkpoint fallback."""
+    env_emotion_path = os.getenv('EMOTION_MODEL_PATH')
+    if env_emotion_path:
+        return Path(env_emotion_path)
+    legacy = models_dir / 'emotion_model.pth'
+    if legacy.exists():
+        return legacy
+    best_ckpt = models_dir / 'best_emotion_wav2vec2' / 'best_checkpoint'
+    return best_ckpt
+
 
 def check_models_load():
     """Check that all models can be loaded."""
@@ -45,7 +56,7 @@ def check_models_load():
     models_dir = Path(__file__).parent.parent / 'models'
     
     # Check EmotionDetector
-    emotion_model_path = models_dir / 'emotion_model.pth'
+    emotion_model_path = resolve_emotion_model_path(models_dir)
     try:
         if emotion_model_path.exists():
             detector = EmotionDetector(model_path=str(emotion_model_path))
@@ -94,7 +105,7 @@ def check_model_health():
     models_dir = Path(__file__).parent.parent / 'models'
     
     # Check EmotionDetector health
-    emotion_model_path = models_dir / 'emotion_model.pth'
+    emotion_model_path = resolve_emotion_model_path(models_dir)
     if emotion_model_path.exists():
         try:
             detector = EmotionDetector(model_path=str(emotion_model_path))

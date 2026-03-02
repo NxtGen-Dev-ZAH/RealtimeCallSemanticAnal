@@ -112,7 +112,7 @@ Deep Learning	EEND-NAA architecture is purely deep-learning based — it uses Tr
 Natural Language Processing (NLP)	Sequence modeling and Transformer architectures.
 Software Engineering	Linguistic modeling using ASR outputs and text embeddings.
 Speech Processing	Acoustic feature extraction (MFCCs, pitch, energy, zero-crossing rate), speech-to-text transcription (Whisper ASR), speaker diarization, prosody analysis, and audio signal preprocessing (noise reduction, normalization).
-Web Technologies	Development of interactive dashboard using React and Flask/Fast 
+Web Technologies	Development of interactive dashboard using React and FastAPI/Fast 
 API
 
 1.3.	Project Background
@@ -609,3 +609,4 @@ References:
 8.	Zhao, J., Mao, X., & Chen, L. (2019). Speech emotion recognition using deep 1D & 2D CNN LSTM networks. Biomedical Signal Processing and Control, 47, 312-323. 
 9.	Poria, S., Cambria, E., Bajpai, R., & Hussain, A. (2017). A review of affective computing: From unimodal analysis to multimodal fusion. Information Fusion, 37, 98-125. 
 10.	Zadeh, A., Liang, P. P., Mazumder, N., Poria, S., Cambria, E., & Morency, L. P. (2018). Memory fusion network for multi-view sequential learning. In Proceedings of the AAAI Conference on Artificial Intelligence, 32(1).
+

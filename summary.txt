@@ -27,7 +27,7 @@ Predictive Modeling: Fuses features using XGBoost to forecast sales conversion p
 
 Key Deliverables and Functions
 
-Interactive Dashboards: Built with React and Flask/FastAPI to visualize real-time sentiment trends and performance insights.
+Interactive Dashboards: Built with React and FastAPI to visualize real-time sentiment trends and performance insights.
 +2
 
 

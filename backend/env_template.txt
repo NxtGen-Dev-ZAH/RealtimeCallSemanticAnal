@@ -1,0 +1,89 @@
+# Runtime environment template for RealtimeCallSemanticAnal
+# Copy to backend/.env (recommended) or project-root .env if needed by your tooling.
+
+# -----------------------------
+# Model / Hugging Face
+# -----------------------------
+# Required for pyannote/WhisperX diarization (speaker diarization).
+# How to get HF_TOKEN:
+#   1. Sign up at https://huggingface.co/
+#   2. Go to https://huggingface.co/settings/tokens
+#   3. Create a token (read access is enough for public models)
+#   4. For pyannote/speaker-diarization, accept the model terms at:
+#      https://huggingface.co/pyannote/speaker-diarization
+HF_TOKEN=your_huggingface_token_here
+
+# -----------------------------
+# Database
+# -----------------------------
+# MONGODB_URI - How to get:
+#   Option A - Local MongoDB: Install MongoDB, then use: mongodb://localhost:27017/
+#   Option B - MongoDB Atlas (recommended for demos):
+#     1. Create account at https://www.mongodb.com/cloud/atlas
+#     2. Create a free cluster, add a DB user (username + password)
+#     3. Network Access: add your IP or 0.0.0.0/0 for testing
+#     4. Connect -> "Drivers" -> copy the connection string
+#     Format: mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
+# Local: MONGODB_URI=mongodb://localhost:27017/
+# Atlas: MONGODB_URI=mongodb+srv://<username>:<password>@<cluster-name>.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster-name>.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+MONGODB_DATABASE=call_center_db
+
+# Optional switch used by some modules
+MONGODB_ENABLED=true
+
+# -----------------------------
+# PostgreSQL (optional - NOT used by current app code)
+# -----------------------------
+# Config reads these but no PostgreSQL connection or CRUD exists. Kept for future use.
+# POSTGRES_HOST=localhost
+# POSTGRES_PORT=5432
+# POSTGRES_DB=call_analysis
+# POSTGRES_USER=
+# POSTGRES_PASSWORD=
+
+# -----------------------------
+# FastAPI server
+# -----------------------------
+SECRET_KEY=change-this-secret-in-production
+DEBUG=True
+HOST=0.0.0.0
+PORT=8000
+
+# -----------------------------
+# Models / processing
+# -----------------------------
+WHISPER_MODEL_SIZE=base
+BERT_MODEL_NAME=distilbert-base-uncased
+# Sentiment: 'distilbert' or 'finbert' or any Hugging Face model id
+SENTIMENT_MODEL=distilbert
+# Optional: local directory with saved sentiment model (avoids HF dependency if model is removed/changed)
+# See backend/scripts/README_TRAINING.md "How to download the sentiment model locally"
+# SENTIMENT_MODEL_PATH=
+# Optional: Hugging Face commit hash to pin model version (e.g. abc123f)
+# SENTIMENT_MODEL_REVISION=
+# Optional: true = load only from cache/local path, no network (set after first download)
+# SENTIMENT_LOCAL_FILES_ONLY=False
+PYANNOTE_AUDIO_MODEL=pyannote/speaker-diarization
+# Recommended for current repository artifacts:
+# EMOTION_MODEL_PATH=backend/models/best_emotion_wav2vec2_v2/best_checkpoint
+
+# -----------------------------
+# Upload/runtime
+# -----------------------------
+UPLOAD_FOLDER=uploads
+MAX_CONTENT_LENGTH=104857600
+ALLOWED_EXTENSIONS=wav,mp3,m4a,flac
+
+# -----------------------------
+# Logging
+# -----------------------------
+LOG_LEVEL=INFO
+LOG_FILE=logs/call_analysis.log
+
+# -----------------------------
+# Feature toggles
+# -----------------------------
+PII_MASKING_ENABLED=True
+DEMO_MODE=False
+USE_SIMULATED_AUDIO=False

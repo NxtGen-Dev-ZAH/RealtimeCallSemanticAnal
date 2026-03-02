@@ -179,7 +179,7 @@ Tools & Technologies	 Tools                     	 Version
 	 PostgreSQL                	 15      
 	 MongoDB                   	 -       
 	 React                     	 18      
-	 Flask/FastAPI             	 -       
+	 FastAPI             	 -       
 
 
 
@@ -259,3 +259,4 @@ Amazon Web Services, “Amazon Connect Contact Lens,” [Online]. Available: htt
  OpenAI, “Whisper: Robust Speech Recognition via Large-Scale Weak Supervision,” [Online]. Available: https://github.com/openai/whisper. [Accessed: Sep. 2025].
  T. Chen and C. Guestrin, “XGBoost: A Scalable Tree Boosting System,” in Proc. 22nd ACM SIGKDD Int. Conf. Knowledge Discovery and Data Mining (KDD), 2016, pp. 785–794.
  B. McFee et al., “librosa: Audio and music signal analysis in Python,” in Proc. 14th Python in Science Conf. (SciPy), 2015, pp. 18–25.
+

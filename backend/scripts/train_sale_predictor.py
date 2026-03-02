@@ -12,13 +12,14 @@ import os
 import sys
 import argparse
 import logging
+import inspect
 import numpy as np
 import pandas as pd
 from pathlib import Path
 import json
 from typing import Dict, List, Tuple, Optional
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve, calibration_curve
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.calibration import CalibratedClassifierCV
@@ -31,7 +32,56 @@ import matplotlib.pyplot as plt
 # Add parent directory to path to import call_analysis modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.call_analysis.models import SalePredictor
+try:
+    # Preferred path when running inside the full project repository.
+    from src.call_analysis.models import SalePredictor
+except Exception as import_error:
+    # Standalone fallback for Colab/single-file usage.
+    logging.getLogger(__name__).warning(
+        "Could not import SalePredictor from src.call_analysis.models (%s). "
+        "Using local fallback SalePredictor class.",
+        import_error,
+    )
+
+    class SalePredictor:
+        """Minimal standalone fallback used when project imports are unavailable."""
+
+        def __init__(self, model_path: Optional[str] = None):
+            self.model = None
+            self.feature_importance = None
+            self.feature_names = None
+            self.is_trained = False
+            self.scaler = None
+            self.imputer = None
+            self.threshold = 0.5
+
+            if model_path and os.path.exists(model_path):
+                self.load_model(model_path)
+
+        def save_model(self, model_path: str) -> None:
+            if self.model is None:
+                raise ValueError("No model to save. Train model first.")
+            joblib.dump(self.model, model_path)
+            logger.info("Sale prediction model saved to %s", model_path)
+
+        def load_model(self, model_path: str) -> None:
+            self.model = joblib.load(model_path)
+            self.is_trained = True
+
+        def get_feature_importance(self) -> Dict:
+            if self.feature_importance is None or self.feature_names is None:
+                return {"importance": [], "feature_names": [], "top_features": []}
+
+            pairs = [
+                {"feature": name, "importance": float(imp)}
+                for name, imp in zip(self.feature_names, self.feature_importance)
+            ]
+            pairs = sorted(pairs, key=lambda x: x["importance"], reverse=True)
+            return {
+                "importance": [float(v) for v in self.feature_importance],
+                "feature_names": list(self.feature_names),
+                "top_features": pairs[:10],
+            }
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,7 +90,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Expected feature names (11 features total)
+# Expected feature names (11 model features)
 EXPECTED_FEATURES = [
     'sentiment_mean',
     'sentiment_variance',
@@ -83,13 +133,62 @@ def validate_csv_format(df: pd.DataFrame) -> Tuple[bool, List[str]]:
     return is_valid, missing_cols
 
 
-def load_and_preprocess_data(csv_path: str, test_split: float = 0.15, 
-                             validation_split: float = 0.15, 
-                             use_scaling: bool = False) -> Tuple[np.ndarray, np.ndarray, 
-                                                                  np.ndarray, np.ndarray,
-                                                                  np.ndarray, np.ndarray,
-                                                                  Optional[SimpleImputer],
-                                                                  Optional[StandardScaler]]:
+def _normalize_and_filter_split_column(values: pd.Series) -> pd.Series:
+    """Normalize data_split column to train/val/test tokens."""
+    normalized = values.astype(str).str.strip().str.lower()
+    mapping = {
+        'train': 'train',
+        'training': 'train',
+        'tr': 'train',
+        'val': 'val',
+        'valid': 'val',
+        'validation': 'val',
+        'dev': 'val',
+        'test': 'test',
+        'testing': 'test',
+        'te': 'test'
+    }
+    return normalized.map(mapping).fillna('unknown')
+
+
+def _split_by_data_split_column(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Split dataset using explicit data_split column."""
+    split_col = _normalize_and_filter_split_column(df['data_split'])
+    train_df = df[split_col == 'train']
+    val_df = df[split_col == 'val']
+    test_df = df[split_col == 'test']
+    return train_df, val_df, test_df
+
+
+def _split_by_time(df: pd.DataFrame, validation_split: float, test_split: float) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Split dataset by time using call_timestamp."""
+    if 'call_timestamp' not in df.columns:
+        raise ValueError("call_timestamp column missing for --time_split")
+    df_sorted = df.sort_values('call_timestamp')
+    n = len(df_sorted)
+    test_size = int(n * test_split)
+    val_size = int(n * validation_split)
+    train_size = n - val_size - test_size
+    if train_size <= 0:
+        raise ValueError("Not enough rows for time-based split")
+    train_df = df_sorted.iloc[:train_size]
+    val_df = df_sorted.iloc[train_size:train_size + val_size]
+    test_df = df_sorted.iloc[train_size + val_size:]
+    return train_df, val_df, test_df
+
+
+def load_and_preprocess_data(
+    csv_path: str,
+    test_split: float = 0.15,
+    validation_split: float = 0.15,
+    use_scaling: bool = False,
+    use_data_split: bool = False,
+    time_split: bool = False
+) -> Tuple[np.ndarray, np.ndarray,
+           np.ndarray, np.ndarray,
+           np.ndarray, np.ndarray,
+           Optional[SimpleImputer],
+           Optional[StandardScaler]]:
     """
     Load CSV and preprocess data for training.
     
@@ -101,6 +200,8 @@ def load_and_preprocess_data(csv_path: str, test_split: float = 0.15,
         test_split: Test split ratio (default: 0.15)
         validation_split: Validation split ratio (default: 0.15)
         use_scaling: Whether to apply StandardScaler (default: False, XGBoost doesn't need it)
+        use_data_split: Use data_split column in CSV (train/val/test) if present
+        time_split: Use call_timestamp to split chronologically (train -> val -> test)
         
     Returns:
         Tuple of (X_train, y_train, X_val, y_val, X_test, y_test, imputer, scaler)
@@ -125,18 +226,42 @@ def load_and_preprocess_data(csv_path: str, test_split: float = 0.15,
     logger.info("Label distribution (full dataset):")
     for label, count in zip(unique_labels, counts):
         logger.info(f"  {LABEL_COLUMN}={label}: {count} ({100*count/len(y):.1f}%)")
+
+    if use_data_split:
+        logger.info("Using data_split column for train/val/test split")
+    elif time_split:
+        logger.info("Using call_timestamp for chronological train/val/test split")
     
     # Split data FIRST (before any preprocessing to prevent leakage)
-    # First split: train+val vs test
-    X_temp, X_test, y_temp, y_test = train_test_split(
-        X, y, test_size=test_split, random_state=42, stratify=y
-    )
-    
-    # Second split: train vs val
-    val_size_adjusted = validation_split / (1 - test_split)
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_temp, y_temp, test_size=val_size_adjusted, random_state=42, stratify=y_temp
-    )
+    if use_data_split:
+        if 'data_split' not in df.columns:
+            raise ValueError("data_split column missing for --use_data_split")
+        train_df, val_df, test_df = _split_by_data_split_column(df)
+    elif time_split:
+        train_df, val_df, test_df = _split_by_time(df, validation_split, test_split)
+    else:
+        # First split: train+val vs test
+        X_temp, X_test, y_temp, y_test = train_test_split(
+            X, y, test_size=test_split, random_state=42, stratify=y
+        )
+        # Second split: train vs val
+        val_size_adjusted = validation_split / (1 - test_split)
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_temp, y_temp, test_size=val_size_adjusted, random_state=42, stratify=y_temp
+        )
+        train_df = val_df = test_df = None
+
+    if use_data_split or time_split:
+        if train_df is None or val_df is None or test_df is None:
+            raise RuntimeError("Split failed; train/val/test sets not created")
+        if len(train_df) == 0 or len(val_df) == 0 or len(test_df) == 0:
+            raise ValueError("One of train/val/test splits is empty")
+        X_train = train_df[EXPECTED_FEATURES].values
+        y_train = train_df[LABEL_COLUMN].values
+        X_val = val_df[EXPECTED_FEATURES].values
+        y_val = val_df[LABEL_COLUMN].values
+        X_test = test_df[EXPECTED_FEATURES].values
+        y_test = test_df[LABEL_COLUMN].values
     
     logger.info(f"Train samples: {len(X_train)}")
     logger.info(f"Validation samples: {len(X_val)}")
@@ -301,6 +426,119 @@ def plot_roc_curve(y_true: np.ndarray, y_proba: np.ndarray, output_path: Path):
         logger.warning(f"Could not create ROC curve plot: {e}")
 
 
+def fit_xgb_with_compat(
+    model: xgb.XGBClassifier,
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    early_stopping_rounds: int
+) -> xgb.XGBClassifier:
+    """
+    Fit XGBoost model with compatibility across XGBoost sklearn APIs.
+
+    Some versions accept early_stopping_rounds in fit(), others require it in
+    model params, and some ignore it entirely.
+    """
+    fit_kwargs = {
+        'X': X_train,
+        'y': y_train,
+        'eval_set': [(X_val, y_val)],
+        'verbose': False
+    }
+
+    # Try fit-time early stopping (older API style)
+    try:
+        model.fit(**fit_kwargs, early_stopping_rounds=early_stopping_rounds)
+        logger.info("XGBoost training used fit(..., early_stopping_rounds=...)")
+        return model
+    except TypeError:
+        logger.warning(
+            "XGBoost fit() does not accept early_stopping_rounds in this version. "
+            "Trying model parameter style."
+        )
+
+    # Try constructor/param style early stopping (newer API style)
+    try:
+        model.set_params(early_stopping_rounds=early_stopping_rounds)
+        model.fit(**fit_kwargs)
+        logger.info("XGBoost training used model.set_params(early_stopping_rounds=...)")
+        return model
+    except Exception as e:
+        logger.warning(
+            f"Could not apply early stopping in current XGBoost version ({e}). "
+            "Training without early stopping."
+        )
+
+    # Final fallback: train without early stopping
+    model.fit(X_train, y_train, verbose=False)
+    logger.info("XGBoost training completed without early stopping.")
+    return model
+
+
+def calibrate_with_compat(
+    fitted_model: xgb.XGBClassifier,
+    X_val: np.ndarray,
+    y_val: np.ndarray
+) -> object:
+    """
+    Calibrate probabilities with compatibility across sklearn versions.
+
+    - New sklearn: prefers FrozenEstimator + cv=None
+    - Older sklearn: supports cv='prefit'
+    - Fallback: return uncalibrated model
+    """
+    logger.info("Applying probability calibration (Platt scaling)...")
+
+    # Try new sklearn API with FrozenEstimator
+    try:
+        from sklearn.frozen import FrozenEstimator  # sklearn >= 1.6
+
+        sig = inspect.signature(CalibratedClassifierCV)
+        if 'estimator' in sig.parameters:
+            calibrated = CalibratedClassifierCV(
+                estimator=FrozenEstimator(fitted_model),
+                method='sigmoid',
+                cv=None
+            )
+        else:
+            calibrated = CalibratedClassifierCV(
+                base_estimator=FrozenEstimator(fitted_model),
+                method='sigmoid',
+                cv=None
+            )
+        calibrated.fit(X_val, y_val)
+        logger.info("Calibration succeeded with FrozenEstimator API.")
+        return calibrated
+    except Exception as e:
+        logger.warning(f"FrozenEstimator calibration path unavailable: {e}")
+
+    # Try legacy prefit API
+    try:
+        sig = inspect.signature(CalibratedClassifierCV)
+        if 'estimator' in sig.parameters:
+            calibrated = CalibratedClassifierCV(
+                estimator=fitted_model,
+                method='sigmoid',
+                cv='prefit'
+            )
+        else:
+            calibrated = CalibratedClassifierCV(
+                base_estimator=fitted_model,
+                method='sigmoid',
+                cv='prefit'
+            )
+        calibrated.fit(X_val, y_val)
+        logger.info("Calibration succeeded with cv='prefit' API.")
+        return calibrated
+    except Exception as e:
+        logger.warning(
+            f"Calibration failed for both API styles ({e}). "
+            "Proceeding with uncalibrated model."
+        )
+        return fitted_model
+
+
 def main():
     parser = argparse.ArgumentParser(description='Train SalePredictor (XGBoost) on CSV data')
     parser.add_argument('--csv_path', type=str, required=True,
@@ -317,6 +555,18 @@ def main():
                         help='XGBoost max_depth (default: 6)')
     parser.add_argument('--learning_rate', type=float, default=0.1,
                         help='XGBoost learning_rate (default: 0.1)')
+    parser.add_argument('--eval_metric', type=str, default='auc',
+                        help='XGBoost eval_metric (default: auc)')
+    parser.add_argument('--subsample', type=float, default=1.0,
+                        help='XGBoost subsample ratio (default: 1.0)')
+    parser.add_argument('--colsample_bytree', type=float, default=1.0,
+                        help='XGBoost colsample_bytree ratio (default: 1.0)')
+    parser.add_argument('--min_child_weight', type=float, default=1.0,
+                        help='XGBoost min_child_weight (default: 1.0)')
+    parser.add_argument('--use_data_split', action='store_true',
+                        help='Use data_split column for train/val/test splits')
+    parser.add_argument('--time_split', action='store_true',
+                        help='Use call_timestamp for chronological train/val/test split')
     parser.add_argument('--use_scaling', action='store_true',
                         help='Apply StandardScaler (XGBoost doesn\'t need it, default: False)')
     parser.add_argument('--early_stopping_rounds', type=int, default=20,
@@ -336,8 +586,16 @@ def main():
     output_path.mkdir(parents=True, exist_ok=True)
     
     # Load and preprocess data (FIXED: no data leakage)
+    if args.use_data_split and args.time_split:
+        raise ValueError("Use only one of --use_data_split or --time_split")
+
     X_train, y_train, X_val, y_val, X_test, y_test, imputer, scaler = load_and_preprocess_data(
-        str(csv_path), args.test_split, args.validation_split, args.use_scaling
+        str(csv_path),
+        args.test_split,
+        args.validation_split,
+        args.use_scaling,
+        use_data_split=args.use_data_split,
+        time_split=args.time_split
     )
     
     # Calculate class imbalance for scale_pos_weight
@@ -364,24 +622,27 @@ def main():
         n_estimators=args.n_estimators,
         max_depth=args.max_depth,
         learning_rate=args.learning_rate,
+        subsample=args.subsample,
+        colsample_bytree=args.colsample_bytree,
+        min_child_weight=args.min_child_weight,
         scale_pos_weight=scale_pos_weight,  # FIXED: Handle class imbalance
         random_state=42,
-        eval_metric='logloss'
+        eval_metric=args.eval_metric
     )
     
-    # Train model with early stopping (FIXED)
+    # Train model with version-compatible early stopping behavior
     logger.info(f"Training with early stopping (patience={args.early_stopping_rounds})")
-    xgb_model.fit(
-        X_train, y_train,
-        eval_set=[(X_val, y_val)],
-        early_stopping_rounds=args.early_stopping_rounds,  # FIXED: Early stopping
-        verbose=False
+    xgb_model = fit_xgb_with_compat(
+        xgb_model,
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        args.early_stopping_rounds
     )
     
-    # Apply probability calibration (Platt scaling) for better calibrated probabilities
-    logger.info("Applying probability calibration (Platt scaling)...")
-    calibrated_model = CalibratedClassifierCV(xgb_model, method='sigmoid', cv='prefit')
-    calibrated_model.fit(X_val, y_val)  # Calibrate on validation set
+    # Apply probability calibration with sklearn-version compatibility
+    calibrated_model = calibrate_with_compat(xgb_model, X_val, y_val)
     
     # FIXED: Properly initialize SalePredictor with all required attributes
     sale_predictor.model = calibrated_model  # Use calibrated model
@@ -389,7 +650,10 @@ def main():
     sale_predictor.feature_names = EXPECTED_FEATURES.copy()
     sale_predictor.is_trained = True
     sale_predictor.scaler = scaler  # Store scaler if used
-    logger.info("Probability calibration applied (Platt scaling)")
+    if isinstance(calibrated_model, xgb.XGBClassifier):
+        logger.info("Using uncalibrated XGBoost probabilities.")
+    else:
+        logger.info("Probability calibration applied successfully.")
     
     # Evaluate on validation set (using calibrated probabilities)
     logger.info("Evaluating on validation set...")
@@ -456,6 +720,10 @@ def main():
             'n_estimators': args.n_estimators,
             'max_depth': args.max_depth,
             'learning_rate': args.learning_rate,
+            'eval_metric': args.eval_metric,
+            'subsample': args.subsample,
+            'colsample_bytree': args.colsample_bytree,
+            'min_child_weight': args.min_child_weight,
             'scale_pos_weight': float(scale_pos_weight),
             'early_stopping_rounds': args.early_stopping_rounds,
             'use_scaling': args.use_scaling,

@@ -1,0 +1,27 @@
+{
+  "valid": true,
+  "warnings": [],
+  "errors": [],
+  "statistics": {
+    "sale_ratio": 0.3001,
+    "target_sale_ratio": 0.3,
+    "label_distribution": {
+      "0": 13998,
+      "1": 6002
+    },
+    "feature_correlations": {
+      "sentiment_mean": 0.3420753734252851,
+      "sentiment_variance": -0.07959475582806165,
+      "emotion_neutral": -0.014402730642459583,
+      "emotion_happiness": 0.33786050083369473,
+      "emotion_anger": -0.22123050519057133,
+      "emotion_sadness": -0.19495921236371389,
+      "emotion_frustration": -0.11791783554061248,
+      "silence_ratio": -0.22103909121083531,
+      "interruption_frequency": -0.10756908916926315,
+      "talk_listen_ratio": 0.027575170669146703,
+      "turn_taking_frequency": 0.20467832954124895
+    },
+    "logistic_auc": 0.7299824761904762
+  }
+}

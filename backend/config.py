@@ -34,7 +34,13 @@ class Config:
     # Model Configuration
     WHISPER_MODEL_SIZE = os.getenv('WHISPER_MODEL_SIZE', 'base')
     BERT_MODEL_NAME = os.getenv('BERT_MODEL_NAME', 'distilbert-base-uncased')
-    SENTIMENT_MODEL = os.getenv('SENTIMENT_MODEL', 'distilbert')  # Options: 'distilbert' or 'finbert'
+    SENTIMENT_MODEL = os.getenv('SENTIMENT_MODEL', 'distilbert')  # Options: 'distilbert' or 'finbert' or HF model id
+    # Optional: local path to cached sentiment model (avoids HF dependency if model is deleted/changed)
+    SENTIMENT_MODEL_PATH = os.getenv('SENTIMENT_MODEL_PATH', '')
+    # Optional: HF revision (commit hash) to pin model version; empty = use default
+    SENTIMENT_MODEL_REVISION = os.getenv('SENTIMENT_MODEL_REVISION', '')
+    # If True, load only from cache/local path (no network). Set after first download for resilience.
+    SENTIMENT_LOCAL_FILES_ONLY = os.getenv('SENTIMENT_LOCAL_FILES_ONLY', 'False').lower() == 'true'
     PYANNOTE_AUDIO_MODEL = os.getenv('PYANNOTE_AUDIO_MODEL', 'pyannote/speaker-diarization')
     
     # File Upload Configuration

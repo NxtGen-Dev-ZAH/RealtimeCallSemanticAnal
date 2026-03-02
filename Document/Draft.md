@@ -43,7 +43,7 @@ The backend is structured into clearly separated layers that correspond to the l
   - It captures:
     - **Model configuration**: Whisper model size (`WHISPER_MODEL_SIZE`), BERT model name (`BERT_MODEL_NAME`), Pyannote model ID.
     - **Database configuration**: MongoDB URI and database, Postgres connection parameters (currently configured but not used by the code paths).
-    - **Web-server configuration**: Host/port, debug mode, Flask-style keys (reused by FastAPI/uvicorn).
+    - **Web-server configuration**: Host/port, debug mode, FastAPI-style keys (reused by FastAPI/uvicorn).
     - **File, logging, and performance settings**: upload folder, maximum payload size, log file path, batch size, worker limits, cache TTL, demo toggles.
   - `Config.init_app` ensures that required directories (`uploads`, `logs`, `output`, `templates`) exist at runtime.  
   - These settings align with the tool and environment choices listed in the proposal’s “Tools and Technologies” section.

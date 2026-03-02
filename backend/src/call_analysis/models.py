@@ -110,34 +110,54 @@ def log_performance(func):
 class SentimentAnalyzer:
     """Text sentiment analysis using BERT/DistilBERT"""
     
-    def __init__(self, model_name: str = None):
+    def __init__(self, model_name: str = None, model_path: str = None):
         """
         Initialize sentiment analyzer
-        
+
         Args:
             model_name: Hugging Face model name or 'finbert'/'distilbert' shortcut.
-                       If None, uses Config.SENTIMENT_MODEL or defaults to 'distilbert'
+                       If None, uses Config.SENTIMENT_MODEL or defaults to 'distilbert'.
+                       Can also be a local directory path (overrides HF when present).
+            model_path: Optional local directory path to load model from (avoids HF dependency
+                       if the remote model is deleted or changed). Overrides model_name when set.
         """
+        try:
+            from config import Config
+            _config = Config
+        except Exception:
+            _config = None
+
+        # Optional: load from local path (resilience if HF model is deleted/changed)
+        self._model_path = (model_path or (getattr(_config, 'SENTIMENT_MODEL_PATH', None) if _config else None) or '').strip()
+        self._revision = (getattr(_config, 'SENTIMENT_MODEL_REVISION', None) if _config else None) or None
+        if self._revision:
+            self._revision = self._revision.strip() or None
+        self._local_files_only = getattr(_config, 'SENTIMENT_LOCAL_FILES_ONLY', False) if _config else False
+
         # Get model name from config if not provided
         if model_name is None:
-            try:
-                from config import Config
-                model_name = getattr(Config, 'SENTIMENT_MODEL', 'distilbert')
-            except:
-                model_name = 'distilbert'
-        
-        # Handle model shortcuts
-        if model_name.lower() == 'finbert':
-            self.model_name = "ProsusAI/finbert"
-            self.sentiment_model_name = "ProsusAI/finbert"
-        elif model_name.lower() == 'distilbert':
+            model_name = getattr(_config, 'SENTIMENT_MODEL', 'distilbert') if _config else 'distilbert'
+
+        # If model_name is a local directory path, use it as primary source
+        if model_name and os.path.isdir(model_name):
+            self._model_path = self._model_path or model_name
+            model_name = 'distilbert'  # fallback id for shortcut logic when path fails
+
+        # Handle model shortcuts (only when not loading from local path)
+        if not (self._model_path and os.path.isdir(self._model_path)) and isinstance(model_name, str):
+            if model_name.lower() == 'finbert':
+                self.model_name = "ProsusAI/finbert"
+                self.sentiment_model_name = "ProsusAI/finbert"
+            elif model_name.lower() == 'distilbert':
+                self.model_name = "distilbert-base-uncased"
+                self.sentiment_model_name = "distilbert-base-uncased-finetuned-sst-2-english"
+            else:
+                self.model_name = model_name
+                self.sentiment_model_name = model_name
+        else:
             self.model_name = "distilbert-base-uncased"
             self.sentiment_model_name = "distilbert-base-uncased-finetuned-sst-2-english"
-        else:
-            # Use provided model name as-is
-            self.model_name = model_name
-            self.sentiment_model_name = model_name
-        
+
         self.tokenizer = None
         self.model = None
         self.finbert_model = None  # Separate model for FinBERT classification
@@ -147,25 +167,49 @@ class SentimentAnalyzer:
         self.using_finbert = False  # Flag to track if using FinBERT
         self._load_model()
     
+    def _hf_load_kwargs(self, from_local: bool) -> dict:
+        """Build kwargs for from_pretrained/pipeline: revision and local_files_only when using HF."""
+        if from_local:
+            return {}
+        kwargs = {}
+        if self._revision:
+            kwargs["revision"] = self._revision
+        if self._local_files_only:
+            kwargs["local_files_only"] = True
+        return kwargs
+
     def _load_model(self):
-        """Load pre-trained BERT model and sentiment pipeline"""
+        """Load pre-trained BERT model and sentiment pipeline.
+        Prefers local path (SENTIMENT_MODEL_PATH) when set; otherwise loads from Hugging Face.
+        If HF model is deleted or changed, use a local cached copy or set SENTIMENT_LOCAL_FILES_ONLY=true
+        after first download.
+        """
+        from_local = bool(self._model_path and os.path.isdir(self._model_path))
+        load_sentiment_from = self._model_path if from_local else self.sentiment_model_name
+        load_base_from = self._model_path if from_local else self.model_name
+        hf_kw = self._hf_load_kwargs(from_local)
+
         try:
-            logger.info(f"Loading sentiment analysis pipeline with model: {self.sentiment_model_name}...")
-            
+            logger.info(
+                f"Loading sentiment analysis pipeline with model: {load_sentiment_from}"
+                + (" (local)" if from_local else " (Hugging Face)")
+            )
+
             # FinBERT requires different handling (it's a sequence classification model)
-            if 'finbert' in self.sentiment_model_name.lower():
+            if not from_local and 'finbert' in self.sentiment_model_name.lower():
                 # FinBERT is a sequence classification model, not a sentiment-analysis pipeline
                 try:
                     from transformers import AutoModelForSequenceClassification
                     logger.info("Loading FinBERT model for sequence classification...")
-                    self.tokenizer = AutoTokenizer.from_pretrained(self.sentiment_model_name)
-                    self.finbert_model = AutoModelForSequenceClassification.from_pretrained(self.sentiment_model_name)
-                    
+                    self.tokenizer = AutoTokenizer.from_pretrained(self.sentiment_model_name, **hf_kw)
+                    self.finbert_model = AutoModelForSequenceClassification.from_pretrained(
+                        self.sentiment_model_name, **hf_kw
+                    )
+
                     # Store that we're using FinBERT
                     self.using_finbert = True
-                    
+
                     # Create custom pipeline function for FinBERT
-                    # This will be called by analyze_sentiment method
                     def finbert_sentiment(text):
                         """Custom FinBERT sentiment analysis function"""
                         inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512, padding=True)
@@ -173,54 +217,45 @@ class SentimentAnalyzer:
                             outputs = self.finbert_model(**inputs)
                             logits = outputs.logits
                             probs = torch.softmax(logits, dim=-1)[0]
-                            
-                            # FinBERT outputs: [positive, negative, neutral] (3 classes)
+
                             positive_score = float(probs[0])
                             negative_score = float(probs[1])
                             neutral_score = float(probs[2]) if len(probs) > 2 else 0.0
-                            
-                            # Determine label based on highest probability
+
                             if positive_score > negative_score and positive_score > neutral_score:
-                                label = "POSITIVE"
-                                score = positive_score
+                                label, score = "POSITIVE", positive_score
                             elif negative_score > positive_score and negative_score > neutral_score:
-                                label = "NEGATIVE"
-                                score = negative_score
+                                label, score = "NEGATIVE", negative_score
                             else:
-                                label = "NEUTRAL"
-                                score = neutral_score
-                            
-                            # Return in same format as Hugging Face pipeline
+                                label, score = "NEUTRAL", neutral_score
                             return [{'label': label, 'score': score}]
-                    
+
                     self.sentiment_pipeline = finbert_sentiment
                     logger.info("FinBERT sentiment analysis pipeline loaded successfully")
-                    
-                    # Also load base model for embeddings (use FinBERT base)
-                    self.model = AutoModel.from_pretrained(self.model_name)
+
+                    self.model = AutoModel.from_pretrained(self.model_name, **hf_kw)
                 except Exception as e:
                     logger.warning(f"Could not load FinBERT: {e}")
                     logger.info("Falling back to DistilBERT")
-                    # Fallback to DistilBERT
                     self.model_name = "distilbert-base-uncased"
                     self.sentiment_model_name = "distilbert-base-uncased-finetuned-sst-2-english"
                     self.using_finbert = False
-                    self._load_model()  # Recursive call with DistilBERT
+                    self._load_model()
                     return
             else:
-                # Use Hugging Face's pre-trained sentiment analysis pipeline for DistilBERT
+                # DistilBERT (or local path): use sentiment-analysis pipeline
                 self.using_finbert = False
                 self.sentiment_pipeline = pipeline(
                     "sentiment-analysis",
-                    model=self.sentiment_model_name,
-                    return_all_scores=False
+                    model=load_sentiment_from,
+                    return_all_scores=False,
+                    **hf_kw
                 )
                 logger.info("Sentiment analysis pipeline loaded successfully")
-                
-                # Also load base model for embeddings if needed
-                logger.info(f"Loading {self.model_name} model for embeddings...")
-                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-                self.model = AutoModel.from_pretrained(self.model_name)
+
+                logger.info(f"Loading {load_base_from} model for embeddings...")
+                self.tokenizer = AutoTokenizer.from_pretrained(load_base_from, **hf_kw)
+                self.model = AutoModel.from_pretrained(load_base_from, **hf_kw)
                 logger.info("BERT model loaded successfully")
         except Exception as e:
             logger.warning(f"Could not load models: {e}")
@@ -294,7 +329,7 @@ class SentimentAnalyzer:
         probability, which is not the same as true sentiment intensity.
         
         Limitations:
-        - Binary classification probability ≠ continuous sentiment intensity
+        - Binary classification probability â‰  continuous sentiment intensity
         - Score mapping is an approximation, not calibrated
         - For production use, consider fine-tuning a regression model
         
@@ -581,7 +616,7 @@ class AcousticEmotionModel(nn.Module):
     Architecture:
     - Mel-Spectrogram branch: 4 Conv2d layers + LSTM + Attention
     - MFCC branch: 2-3 Conv1d layers + Global Pooling
-    - Concatenated features → FC layers → 5 emotion classes
+    - Concatenated features â†’ FC layers â†’ 5 emotion classes
     """
     def __init__(self, n_mels: int = 128, n_mfcc: int = 40, num_classes: int = 5, dropout: float = 0.3):
         super(AcousticEmotionModel, self).__init__()
@@ -763,284 +798,390 @@ class AcousticEmotionModel(nn.Module):
         logger.info(f"AcousticEmotionModel loaded from {model_path}")
 
 class EmotionDetector:
-    """Audio emotion detection using CNN+LSTM"""
-    
+    """Audio emotion detection supporting legacy CNN+LSTM and Wav2Vec2 checkpoints."""
+
     def __init__(self, model_path: Optional[str] = None, stats_path: Optional[str] = None):
-        """Initialize emotion detector"""
-        # Updated to 5 classes per guide.txt
         self.emotion_labels = ['neutral', 'happiness', 'anger', 'sadness', 'frustration']
         self.model = AcousticEmotionModel(n_mels=128, n_mfcc=40, num_classes=5, dropout=0.3)
+        self.hf_model = None
+        self.hf_feature_extractor = None
+        self.model_backend = 'acoustic'  # 'acoustic' or 'wav2vec2'
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.is_trained = False
-        self.normalization_method = 'cmvn'  # Default to CMVN (best for SER)
+        self.normalization_method = 'cmvn'
         self.normalization_stats = {}
-        
-        # Load normalization statistics if available
-        if stats_path is None and model_path:
-            # Auto-detect stats file next to model
+
+        # Stats file is only meaningful for the legacy acoustic model.
+        if stats_path is None and model_path and os.path.isfile(model_path):
             model_dir = os.path.dirname(model_path)
             stats_path = os.path.join(model_dir, 'emotion_dataset_stats.json')
-        
+
         if stats_path and os.path.exists(stats_path):
             try:
-                import json
-                with open(stats_path, 'r') as f:
+                with open(stats_path, 'r', encoding='utf-8') as f:
                     stats = json.load(f)
                     self.normalization_method = stats.get('normalization_method', 'cmvn')
-                    # Load stats based on normalization method
                     if self.normalization_method == 'zscore':
                         self.normalization_stats = {
                             'mean': stats.get('mean', 0.0),
-                            'std': stats.get('std', 1.0)
+                            'std': stats.get('std', 1.0),
                         }
                     elif self.normalization_method == 'minmax':
                         self.normalization_stats = {
                             'min': stats.get('min', stats.get('mel_min', -80.0)),
-                            'max': stats.get('max', stats.get('mel_max', 0.0))
+                            'max': stats.get('max', stats.get('mel_max', 0.0)),
                         }
-                    # For cmvn and logmel, no stats needed
-                    logger.info(f"Loaded normalization: method={self.normalization_method}, stats={self.normalization_stats}")
+                    logger.info(
+                        f"Loaded normalization: method={self.normalization_method}, stats={self.normalization_stats}"
+                    )
             except Exception as e:
                 logger.warning(f"Could not load normalization statistics: {e}, using CMVN")
                 self.normalization_method = 'cmvn'
                 self.normalization_stats = {}
-        
-        # Load pre-trained model if path provided
+
         if model_path and os.path.exists(model_path):
             self.load_model(model_path)
             self.is_trained = True
-    
-    def load_model(self, model_path: str):
-        """Load trained AcousticEmotionModel weights"""
+
+    def _is_hf_checkpoint_dir(self, model_path: str) -> bool:
+        if not os.path.isdir(model_path):
+            return False
+        has_config = os.path.exists(os.path.join(model_path, 'config.json'))
+        has_preproc = os.path.exists(os.path.join(model_path, 'preprocessor_config.json')) or os.path.exists(
+            os.path.join(model_path, 'feature_extractor_config.json')
+        )
+        return has_config and has_preproc
+
+    def _load_labels_from_hf_config(self, hf_config: Any) -> None:
+        id2label = getattr(hf_config, 'id2label', None)
+        if not isinstance(id2label, dict) or not id2label:
+            return
         try:
+            sorted_items = sorted(id2label.items(), key=lambda kv: int(kv[0]))
+            self.emotion_labels = [label for _, label in sorted_items]
+        except Exception:
+            # Some configs already store int keys.
+            try:
+                sorted_items = sorted(id2label.items(), key=lambda kv: kv[0])
+                self.emotion_labels = [label for _, label in sorted_items]
+            except Exception:
+                pass
+
+    def load_model(self, model_path: str):
+        """Load either a legacy .pth model or a Hugging Face checkpoint directory."""
+        try:
+            if self._is_hf_checkpoint_dir(model_path):
+                from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
+
+                self.hf_feature_extractor = AutoFeatureExtractor.from_pretrained(model_path)
+                self.hf_model = AutoModelForAudioClassification.from_pretrained(model_path)
+                self.hf_model.to(self.device)
+                self.hf_model.eval()
+                self.model_backend = 'wav2vec2'
+                self._load_labels_from_hf_config(self.hf_model.config)
+                self.is_trained = True
+                logger.info(f"Wav2Vec2 emotion model loaded from {model_path}")
+                return
+
+            # Legacy acoustic model path
             self.model.load_model(model_path)
+            self.model_backend = 'acoustic'
             self.is_trained = True
-            logger.info(f"Emotion model loaded from {model_path}")
+            logger.info(f"Acoustic emotion model loaded from {model_path}")
         except FileNotFoundError as e:
             error_msg = f"Model file not found: {model_path}. Please train the model first."
             logger.error(error_msg)
             raise ModelLoadError(error_msg) from e
         except Exception as e:
-            error_msg = f"Failed to load emotion model from {model_path}: {e}. " \
-                       f"Check that the file exists and is a valid PyTorch model."
+            error_msg = (
+                f"Failed to load emotion model from {model_path}: {e}. "
+                "Check that the file exists and is a valid model artifact."
+            )
             logger.error(error_msg)
             raise ModelLoadError(error_msg) from e
-    
-    # ============================================================================
-    # EXTRA: Model health check (not required by documentation)
-    # ============================================================================
+
     def check_model_health(self) -> Dict[str, Any]:
-        """
-        Check model health: verify weights loaded correctly and test inference.
-        
-        Returns:
-            Dictionary with health check results
-        """
+        """Check model health and run a basic inference smoke test."""
         health_status = {
             'is_trained': self.is_trained,
             'model_loaded': False,
             'inference_test': False,
-            'errors': []
+            'backend': self.model_backend,
+            'errors': [],
         }
-        
+
         if not self.is_trained:
             health_status['errors'].append("Model not trained")
             return health_status
-        
+
         try:
-            # Check if model has weights
+            if self.model_backend == 'wav2vec2':
+                if self.hf_model is None or self.hf_feature_extractor is None:
+                    health_status['errors'].append("Wav2Vec2 model/feature extractor not initialized")
+                    return health_status
+
+                total_params = sum(p.numel() for p in self.hf_model.parameters())
+                health_status['model_loaded'] = total_params > 0
+                health_status['total_parameters'] = int(total_params)
+
+                sr = 16000
+                dummy_wave = np.zeros(sr, dtype=np.float32)
+                inputs = self.hf_feature_extractor(dummy_wave, sampling_rate=sr, return_tensors='pt')
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
+                with torch.no_grad():
+                    logits = self.hf_model(**inputs).logits
+                if logits.ndim != 2 or logits.shape[0] != 1:
+                    health_status['errors'].append(f"Unexpected logits shape: {list(logits.shape)}")
+                    return health_status
+
+                if torch.isnan(logits).any() or torch.isinf(logits).any():
+                    health_status['errors'].append("Model output contains NaN or Inf values")
+                    return health_status
+
+                health_status['inference_test'] = True
+                health_status['output_shape'] = list(logits.shape)
+                return health_status
+
+            # Legacy acoustic health check
             total_params = sum(p.numel() for p in self.model.parameters())
             trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-            
             if total_params == 0:
                 health_status['errors'].append("Model has no parameters")
                 return health_status
-            
+
             health_status['model_loaded'] = True
-            health_status['total_parameters'] = total_params
-            health_status['trainable_parameters'] = trainable_params
-            
-            # Test inference with dummy data
-            dummy_mel = torch.randn(1, 1, 128, 100)  # (batch, channel, n_mels, time)
-            dummy_mfcc = torch.randn(1, 40, 100)  # (batch, n_mfcc, time)
-            
+            health_status['total_parameters'] = int(total_params)
+            health_status['trainable_parameters'] = int(trainable_params)
+
+            dummy_mel = torch.randn(1, 1, 128, 100)
+            dummy_mfcc = torch.randn(1, 40, 100)
             self.model.eval()
             with torch.no_grad():
                 output = self.model(dummy_mel, mfcc=dummy_mfcc)
-                
-            if output.shape != (1, 5):  # (batch, num_classes)
+
+            if output.shape != (1, 5):
                 health_status['errors'].append(f"Unexpected output shape: {output.shape}, expected (1, 5)")
                 return health_status
-            
-            # Check output is valid (not NaN or Inf)
             if torch.isnan(output).any() or torch.isinf(output).any():
                 health_status['errors'].append("Model output contains NaN or Inf values")
                 return health_status
-            
+
             health_status['inference_test'] = True
             health_status['output_shape'] = list(output.shape)
-            
         except Exception as e:
             health_status['errors'].append(f"Inference test failed: {e}")
             logger.error(f"Model health check failed: {e}")
-        
+
         return health_status
-    
+
     def _preprocess_mel_spectrogram(self, mel_spec: np.ndarray) -> torch.Tensor:
-        """
-        Preprocess Mel-Spectrogram for model input using configurable normalization.
-        
-        Args:
-            mel_spec: Mel-Spectrogram array (n_mels, time_frames)
-        
-        Returns:
-            Tensor ready for model input (1, 1, n_mels, time_frames)
-        """
-        # Apply normalization using the method and stats from training
         mel_spec = normalize_mel_spectrogram(mel_spec, self.normalization_method, self.normalization_stats)
-        
-        # Add batch and channel dimensions
-        mel_spec_tensor = torch.FloatTensor(mel_spec).unsqueeze(0).unsqueeze(0)
-        
-        return mel_spec_tensor
-    
+        return torch.FloatTensor(mel_spec).unsqueeze(0).unsqueeze(0)
+
+    def _prepare_waveform_for_ssl(
+        self,
+        audio_features: Optional[Dict],
+        audio_path: Optional[str],
+        start_time: Optional[float],
+        end_time: Optional[float],
+    ) -> Tuple[np.ndarray, int]:
+        if audio_features and 'waveform' in audio_features:
+            waveform = np.asarray(audio_features['waveform'], dtype=np.float32)
+            sample_rate = int(audio_features.get('sample_rate', 16000))
+            if waveform.ndim > 1:
+                waveform = np.mean(waveform, axis=0)
+            if waveform.size == 0:
+                raise ValueError("waveform is empty")
+            return waveform, sample_rate
+
+        if audio_path:
+            import librosa
+
+            offset = max(float(start_time or 0.0), 0.0)
+            duration = None
+            if start_time is not None and end_time is not None and end_time > start_time:
+                duration = float(end_time - start_time)
+            waveform, sample_rate = librosa.load(audio_path, sr=16000, mono=True, offset=offset, duration=duration)
+            if waveform.size == 0:
+                raise ValueError(f"Empty waveform extracted from {audio_path} [{start_time}, {end_time}]")
+            return waveform.astype(np.float32), int(sample_rate)
+
+        raise ValueError(
+            "Wav2Vec2 backend requires either `audio_features['waveform']` or `audio_path`."
+        )
+
     @log_performance
-    def detect_emotion(self, audio_features: Dict) -> Dict:
+    def detect_emotion(
+        self,
+        audio_features: Dict,
+        audio_path: Optional[str] = None,
+        start_time: Optional[float] = None,
+        end_time: Optional[float] = None,
+    ) -> Dict:
         """
-        Detect emotion using AcousticEmotionModel (replaces heuristic logic).
-        
+        Detect emotion using either legacy AcousticEmotionModel or Wav2Vec2 checkpoint.
+
         Args:
-            audio_features: Dictionary with 'mel_spectrogram' and optionally 'mfcc' keys
-        
-        Returns:
-            Dictionary with emotion detection results
+            audio_features: For acoustic backend, expects mel_spectrogram (and optional mfcc).
+                           For Wav2Vec2 backend, can optionally include raw waveform.
+            audio_path: Optional path to source audio (used by Wav2Vec2 for segment inference).
+            start_time: Optional segment start time in seconds.
+            end_time: Optional segment end time in seconds.
         """
         if not self.is_trained:
             raise RuntimeError(
-                "Emotion model not trained. "
-                "Please train the model using train_emotion_model.py before inference."
+                "Emotion model not trained. Please train and load a valid emotion model before inference."
             )
-        
+
         try:
+            if self.model_backend == 'wav2vec2':
+                if self.hf_model is None or self.hf_feature_extractor is None:
+                    raise RuntimeError("Wav2Vec2 backend not initialized correctly")
+
+                waveform, sample_rate = self._prepare_waveform_for_ssl(audio_features, audio_path, start_time, end_time)
+                inputs = self.hf_feature_extractor(waveform, sampling_rate=sample_rate, return_tensors='pt')
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                with torch.no_grad():
+                    logits = self.hf_model(**inputs).logits
+                    probabilities = torch.softmax(logits, dim=1)[0].cpu().numpy()
+
+                if len(self.emotion_labels) != len(probabilities):
+                    self.emotion_labels = [f"class_{i}" for i in range(len(probabilities))]
+
+                dominant_idx = int(np.argmax(probabilities))
+                return {
+                    "emotion": self.emotion_labels[dominant_idx],
+                    "confidence": float(probabilities[dominant_idx]),
+                    "probabilities": dict(zip(self.emotion_labels, probabilities.tolist())),
+                }
+
+            # Legacy acoustic branch
             mel_spec = audio_features['mel_spectrogram']
             mfcc = audio_features.get('mfcc', None)
-            
-            # Preprocess for model
             mel_spec_tensor = self._preprocess_mel_spectrogram(mel_spec)
-            
-            # Preprocess MFCC if available
+
             mfcc_tensor = None
             if mfcc is not None:
-                # Normalize MFCC using same method as mel-spectrogram
                 from src.call_analysis.feature_extraction import normalize_mel_spectrogram
+
                 mfcc_norm = normalize_mel_spectrogram(mfcc, self.normalization_method, self.normalization_stats)
-                mfcc_tensor = torch.FloatTensor(mfcc_norm).unsqueeze(0)  # (1, n_mfcc, time_frames)
-            
-            # Model inference
+                mfcc_tensor = torch.FloatTensor(mfcc_norm).unsqueeze(0)
+
             with torch.no_grad():
                 self.model.eval()
-                logits = self.model(mel_spec_tensor, mfcc=mfcc_tensor) 
-                probabilities = torch.softmax(logits, dim=1)[0].cpu().numpy()  # ✅ Apply softmax to get probabilities
-            
-            # Get dominant emotion
-            dominant_emotion_idx = np.argmax(probabilities)
-            dominant_emotion = self.emotion_labels[dominant_emotion_idx]
-            confidence = float(probabilities[dominant_emotion_idx])
-            
+                logits = self.model(mel_spec_tensor, mfcc=mfcc_tensor)
+                probabilities = torch.softmax(logits, dim=1)[0].cpu().numpy()
+
+            dominant_idx = int(np.argmax(probabilities))
             return {
-                "emotion": dominant_emotion,
-                "confidence": confidence,
-                "probabilities": dict(zip(self.emotion_labels, probabilities.tolist()))
+                "emotion": self.emotion_labels[dominant_idx],
+                "confidence": float(probabilities[dominant_idx]),
+                "probabilities": dict(zip(self.emotion_labels, probabilities.tolist())),
             }
         except Exception as e:
             logger.error(f"Error in emotion detection: {e}")
             raise RuntimeError(f"Emotion detection failed: {e}") from e
-    
-    
-    def detect_conversation_emotions(self, segments: List[Dict], audio_features: Dict) -> List[Dict]:
+
+    def detect_conversation_emotions(
+        self,
+        segments: List[Dict],
+        audio_features: Dict,
+        audio_path: Optional[str] = None,
+    ) -> List[Dict]:
         """
-        Detect emotions for conversation segments using true segment-level emotion detection.
-        
-        This method extracts per-segment mel-spectrograms and runs model inference
-        on each segment independently, enabling accurate temporal emotion tracking.
-        
-        Args:
-            segments: List of conversation segments with 'start_time' and 'end_time'
-            audio_features: Audio features for the entire conversation (must contain 'mel_spectrogram')
-            
-        Returns:
-            List of emotion detection results, one per segment
+        Detect emotions for conversation segments.
+
+        - Acoustic backend: slices mel-spectrogram by time frames.
+        - Wav2Vec2 backend: loads segment waveform using audio_path.
         """
         if not self.is_trained:
             raise RuntimeError(
-                "Emotion model not trained. "
-                "Please train the model using train_emotion_model.py before inference."
+                "Emotion model not trained. Please train and load a valid emotion model before inference."
             )
-        
+
+        results = []
+
+        if self.model_backend == 'wav2vec2':
+            if not audio_path and not (audio_features and 'waveform' in audio_features):
+                raise ValueError(
+                    "Wav2Vec2 backend requires `audio_path` (preferred) or `audio_features['waveform']`."
+                )
+
+            for segment in segments:
+                start_time = segment.get('start_time', 0)
+                end_time = segment.get('end_time', 0)
+                if end_time <= start_time or end_time - start_time < 0.1:
+                    logger.warning(f"Invalid segment time range: {start_time}-{end_time}, skipping segment")
+                    continue
+                try:
+                    segment_emotion = self.detect_emotion(
+                        audio_features=audio_features,
+                        audio_path=audio_path,
+                        start_time=start_time,
+                        end_time=end_time,
+                    )
+                    results.append(
+                        {
+                            "start_time": start_time,
+                            "end_time": end_time,
+                            "speaker": segment.get('speaker', 'Unknown'),
+                            "emotion": segment_emotion['emotion'],
+                            "confidence": segment_emotion['confidence'],
+                            "probabilities": segment_emotion['probabilities'],
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Error processing segment {start_time}-{end_time}: {e}")
+                    logger.warning(f"Skipping segment {start_time}-{end_time} due to processing error")
+            return results
+
+        # Legacy acoustic backend
         if not audio_features or 'mel_spectrogram' not in audio_features:
             raise ValueError(
                 "Missing mel-spectrogram in audio_features. "
                 "Please provide audio features with mel_spectrogram for emotion detection."
             )
-        
-        results = []
+
         full_mel = audio_features['mel_spectrogram']
         sample_rate = audio_features.get('sample_rate', 16000)
-        hop_length = 512  # Standard hop length
-        
-        # Import segment extraction function
+        hop_length = 512
+
         try:
             from .feature_extraction import extract_segment_mel_spectrogram
         except ImportError:
             from feature_extraction import extract_segment_mel_spectrogram
-        
-        # Process each segment independently
+
         for segment in segments:
             start_time = segment.get('start_time', 0)
             end_time = segment.get('end_time', 0)
-            
-            # Skip invalid segments (log warning but continue processing)
-            if end_time <= start_time or end_time - start_time < 0.1:  # Minimum 100ms
+            if end_time <= start_time or end_time - start_time < 0.1:
                 logger.warning(f"Invalid segment time range: {start_time}-{end_time}, skipping segment")
                 continue
-            
             try:
-                # Extract segment-specific mel-spectrogram
                 segment_mel = extract_segment_mel_spectrogram(
                     full_mel, start_time, end_time, sample_rate, hop_length
                 )
-                
-                # Skip if segment is too short (less than 1 frame)
                 if segment_mel.shape[1] < 1:
                     logger.warning(f"Segment too short: {start_time}-{end_time}, skipping segment")
                     continue
-                
-                # Create segment audio features
-                segment_audio_features = {
-                    'mel_spectrogram': segment_mel,
-                    'sample_rate': sample_rate
-                }
-                
-                # Run emotion detection on this segment
+                segment_audio_features = {'mel_spectrogram': segment_mel, 'sample_rate': sample_rate}
                 segment_emotion = self.detect_emotion(segment_audio_features)
-                
-                result = {
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "speaker": segment.get('speaker', 'Unknown'),
-                    "emotion": segment_emotion['emotion'],
-                    "confidence": segment_emotion['confidence'],
-                    "probabilities": segment_emotion['probabilities']
-                }
-                results.append(result)
-                
+                results.append(
+                    {
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "speaker": segment.get('speaker', 'Unknown'),
+                        "emotion": segment_emotion['emotion'],
+                        "confidence": segment_emotion['confidence'],
+                        "probabilities": segment_emotion['probabilities'],
+                    }
+                )
             except Exception as e:
                 logger.error(f"Error processing segment {start_time}-{end_time}: {e}")
-                # Skip this segment rather than returning fake data
                 logger.warning(f"Skipping segment {start_time}-{end_time} due to processing error")
-                continue
-        
+
         return results
-    
 
 
 class SalePredictor:
@@ -1508,16 +1649,21 @@ class ConversationAnalyzer:
         
         # Default model paths
         default_emotion_path = 'backend/models/emotion_model.pth'
+        default_best_emotion_path = 'backend/models/best_emotion_wav2vec2/best_checkpoint'
         default_sale_path = 'backend/models/sale_model.pkl'
         
-        # Use provided paths or defaults
-        emotion_path = emotion_model_path or default_emotion_path
+        # Use explicit path, env override, or best-available default.
+        env_emotion_path = os.getenv('EMOTION_MODEL_PATH')
+        emotion_path = emotion_model_path or env_emotion_path or default_emotion_path
+        if not emotion_model_path and not env_emotion_path and not os.path.exists(emotion_path) and os.path.exists(default_best_emotion_path):
+            emotion_path = default_best_emotion_path
+            logger.info(f"Using best emotion checkpoint by default: {emotion_path}")
         sale_path = sale_model_path or default_sale_path
         
         # Initialize with model paths (will load if files exist)
         if os.path.exists(emotion_path):
             logger.info(f"Loading emotion model from {emotion_path}")
-            # Auto-detect stats file next to model
+            # Auto-detect stats file next to model (legacy acoustic model only).
             stats_path = os.path.join(os.path.dirname(emotion_path), 'emotion_dataset_stats.json')
             self.emotion_detector = EmotionDetector(model_path=emotion_path, stats_path=stats_path)
         else:
@@ -1543,7 +1689,7 @@ class ConversationAnalyzer:
         if not self.emotion_detector.is_trained:
             raise RuntimeError(
                 "Emotion detector model not trained. "
-                "Please train the model using train_emotion_model.py before using ConversationAnalyzer."
+                "Please train and place either emotion_model.pth or best_emotion_wav2vec2/best_checkpoint before using ConversationAnalyzer."
             )
         
         logger.info("All models loaded and verified as trained")
@@ -1575,15 +1721,20 @@ class ConversationAnalyzer:
         # Analyze sentiment for each segment
         sentiment_results = self.sentiment_analyzer.analyze_conversation_sentiment(segments)
         
-        # Analyze emotions using AcousticEmotionModel
-        if audio_features is None:
-            # Fail loudly if audio_features not provided (no random fallback)
+        # Analyze emotions.
+        # Legacy acoustic backend requires mel-spectrogram in audio_features.
+        # Wav2Vec2 backend can run directly from audio_path.
+        if audio_features is None and self.emotion_detector.model_backend != 'wav2vec2':
             raise ValueError(
-                "audio_features must be provided for emotion detection. "
+                "audio_features must be provided for acoustic emotion detection. "
                 "Cannot generate fake mel-spectrogram data."
             )
         
-        emotion_results = self.emotion_detector.detect_conversation_emotions(segments, audio_features)
+        emotion_results = self.emotion_detector.detect_conversation_emotions(
+            segments,
+            audio_features,
+            audio_path=audio_path,
+        )
         
         # Extract conversational dynamics from segments
         from .feature_extraction import FeatureExtractor
