@@ -5,6 +5,7 @@ audio feature extraction (FR-5), text preprocessing for BERT (FR-4), and MongoDB
 """
 
 import os
+import torch
 import librosa
 import numpy as np
 import pandas as pd
@@ -75,7 +76,8 @@ class AudioProcessor:
     
     def __init__(self, model_size: str = "base", hf_token: str = None, use_whisperx: bool = True, 
                  chunk_duration: float = 300.0, enable_chunking: bool = True,
-                 max_speakers: int = None, clustering_threshold: float = 0.3, min_segment_duration: float = 1.0,
+                 max_speakers: int = None, min_speakers: int = None, num_speakers: int = None,
+                 clustering_threshold: float = 0.3, min_segment_duration: float = 1.0,
                  speaker_merge_threshold: float = 0.7, use_whisperx_builtin_diarization: bool = False):
         """
         Initialize audio processor.
@@ -86,8 +88,9 @@ class AudioProcessor:
             use_whisperx: Use WhisperX + Resemblyzer (faster, CPU-friendly) instead of Pyannote.
             chunk_duration: Duration of each chunk in seconds (default: 300 = 5 minutes).
             enable_chunking: Enable chunking for long audio files (default: True).
-            max_speakers: Maximum number of speakers as safety limit (None = auto-detect, default: None).
-                           System will automatically determine optimal number based on clustering_threshold.
+            max_speakers: Maximum number of speakers (None = auto-detect). Used by Pyannote and Resemblyzer.
+            min_speakers: Minimum number of speakers (None = no constraint). Pyannote only; cannot mix with num_speakers.
+            num_speakers: Exact number of speakers (None = auto). Pyannote only; cannot mix with min/max_speakers.
             clustering_threshold: Distance threshold for speaker clustering (0.0-1.0, lower = more clusters).
             min_segment_duration: Minimum segment duration in seconds for reliable embeddings (default: 1.0).
             use_whisperx_builtin_diarization: Use WhisperX 3.x built-in diarization (Pyannote.audio) instead of Resemblyzer.
@@ -104,6 +107,8 @@ class AudioProcessor:
         self.chunk_duration = chunk_duration
         self.enable_chunking = enable_chunking
         self.max_speakers = max_speakers
+        self.min_speakers = min_speakers
+        self.num_speakers = num_speakers
         self.clustering_threshold = clustering_threshold
         self.min_segment_duration = min_segment_duration
         self.whisper_model = None
@@ -117,6 +122,8 @@ class AudioProcessor:
         self.mongo_enabled = MONGO_ENABLED
         self.mongo_uri = MONGO_URI
         self.mongo_db = MONGO_DB_NAME
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"Inference device: {self._device}")
         self._load_models()
     
     def _load_models(self):
@@ -168,9 +175,27 @@ class AudioProcessor:
                 logger.info("Loading Pyannote.audio diarization pipeline (fallback)")
                 if self.hf_token:
                     self.diarization_pipeline = Pipeline.from_pretrained(
-                        "pyannote/speaker-diarization",
-                        use_auth_token=self.hf_token
+                        "pyannote/speaker-diarization-3.1",
+                        token=self.hf_token,
                     )
+                    if self._device == "cuda":
+                        self.diarization_pipeline = self.diarization_pipeline.to(torch.device("cuda"))
+                        logger.info("Pyannote pipeline moved to GPU")
+                    # Tune segmentation to reduce fragmentation (call-center style: merge short pauses)
+                    try:
+                        _params = getattr(self.diarization_pipeline, "parameters", None)
+                        if callable(_params):
+                            _instantiate = getattr(self.diarization_pipeline, "instantiate", None)
+                            if callable(_instantiate):
+                                self.diarization_pipeline.instantiate({
+                                    "segmentation": {
+                                        "min_duration_on": 0.1,
+                                        "min_duration_off": 0.3,
+                                    }
+                                })
+                                logger.info("Pyannote pipeline tuned (min_duration_on=0.1s, min_duration_off=0.3s)")
+                    except Exception as inst_err:
+                        logger.debug(f"Pyannote pipeline.instantiate skipped: {inst_err}")
                     logger.info("Pyannote.audio diarization pipeline loaded successfully")
                 else:
                     logger.warning("No Hugging Face token provided. Pyannote diarization will not be available.")
@@ -453,9 +478,8 @@ class AudioProcessor:
             # Load WhisperX model (lazy load)
             if self.whisperx_model is None:
                 logger.info(f"Loading WhisperX model: {self.model_size}")
-                device = "cpu"
-                self.whisperx_model = whisperx.load_model(self.model_size, device, compute_type="int8")
-                logger.info("WhisperX model loaded")
+                self.whisperx_model = whisperx.load_model(self.model_size, self._device, compute_type="int8")
+                logger.info(f"WhisperX model loaded on {self._device}")
             
             # Step 1: Transcribe with WhisperX (faster, word-level timestamps)
             logger.info("Step 1: Transcribing with WhisperX...")
@@ -466,7 +490,7 @@ class AudioProcessor:
             logger.info("Step 2: Aligning word-level timestamps...")
             language_code = result.get("language", "en")
             model_a, metadata = self._get_whisperx_align_model(language_code)
-            result = whisperx.align(result["segments"], model_a, metadata, audio, device="cpu", return_char_alignments=False)
+            result = whisperx.align(result["segments"], model_a, metadata, audio, device=self._device, return_char_alignments=False)
             
             # Step 3: Extract speaker embeddings using Resemblyzer
             # IMPROVED: Use transcription segments line-by-line, but merge very short ones
@@ -680,9 +704,8 @@ class AudioProcessor:
             # Load WhisperX model if not already loaded
             if self.whisperx_model is None:
                 logger.info(f"Loading WhisperX model: {self.model_size}")
-                device = "cpu"
-                self.whisperx_model = whisperx.load_model(self.model_size, device, compute_type="int8")
-                logger.info("WhisperX model loaded")
+                self.whisperx_model = whisperx.load_model(self.model_size, self._device, compute_type="int8")
+                logger.info(f"WhisperX model loaded on {self._device}")
             
             # Step 1: Transcribe with WhisperX
             logger.info("Step 1: Transcribing with WhisperX...")
@@ -693,18 +716,27 @@ class AudioProcessor:
             logger.info("Step 2: Aligning word-level timestamps...")
             language_code = result.get("language", "en")
             model_a, metadata = self._get_whisperx_align_model(language_code)
-            result = whisperx.align(result["segments"], model_a, metadata, audio, device="cpu", return_char_alignments=False)
+            result = whisperx.align(result["segments"], model_a, metadata, audio, device=self._device, return_char_alignments=False)
             
             # Step 3: Load WhisperX diarization model (Pyannote.audio)
             if self.whisperx_diarize_model is None:
                 logger.info("Step 3: Loading WhisperX diarization model (Pyannote.audio)...")
                 try:
-                    # Import DiarizationPipeline from whisperx.diarize (correct location)
                     from whisperx.diarize import DiarizationPipeline
-                    self.whisperx_diarize_model = DiarizationPipeline(
-                        use_auth_token=self.hf_token,
-                        device="cpu"
-                    )
+                    # DiarizationPipeline API: newer uses token=, older uses use_auth_token=; no revision param
+                    try:
+                        self.whisperx_diarize_model = DiarizationPipeline(
+                            token=self.hf_token,
+                            device=self._device,
+                        )
+                    except TypeError as te:
+                        if "token" in str(te):
+                            self.whisperx_diarize_model = DiarizationPipeline(
+                                use_auth_token=self.hf_token,
+                                device=self._device,
+                            )
+                        else:
+                            raise
                     logger.info("✅ WhisperX DiarizationPipeline loaded successfully")
                 except ImportError as e:
                     logger.error(f"Failed to import WhisperX DiarizationPipeline: {e}")
@@ -739,12 +771,9 @@ class AudioProcessor:
                     elapsed += 1
                     if is_running[0]:
                         # Use print to ensure visibility even if logging is filtered
-                        print(f"\n{'='*70}")
-                        print(f"🔄 DIARIZATION PROGRESS: {elapsed} minutes elapsed")
-                        print(f"   This is normal - Pyannote.audio is CPU-intensive")
-                        print(f"   Estimated time remaining: {max(5, int(audio_duration / 10) - elapsed)}-{max(10, int(audio_duration / 10) * 2 - elapsed)} minutes")
-                        print(f"{'='*70}\n")
-                        logger.info(f"🔄 Diarization still processing... ({elapsed} minutes elapsed)")
+                        remaining_lo = max(5, int(audio_duration / 10) - elapsed)
+                        remaining_hi = max(10, int(audio_duration / 10) * 2 - elapsed)
+                        logger.info(f"Diarization progress: {elapsed} min elapsed (Pyannote is CPU-intensive). Est. remaining: {remaining_lo}-{remaining_hi} min")
                         logger.info(f"   This is normal - Pyannote.audio is CPU-intensive, please continue waiting...")
             
             progress_thread = threading.Thread(target=log_progress, daemon=True)
@@ -1218,7 +1247,7 @@ class AudioProcessor:
         if whisperx is None:
             raise RuntimeError("WhisperX is not available")
         
-        model_a, metadata = whisperx.load_align_model(language_code=language_code, device="cpu")
+        model_a, metadata = whisperx.load_align_model(language_code=language_code, device=self._device)
         self.whisperx_align_models[language_code] = (model_a, metadata)
         return model_a, metadata
     
@@ -1351,9 +1380,8 @@ class AudioProcessor:
         # Load models once
         if self.whisperx_model is None:
             logger.info(f"Loading WhisperX model: {self.model_size}")
-            device = "cpu"
-            self.whisperx_model = whisperx.load_model(self.model_size, device, compute_type="int8")
-            logger.info("WhisperX model loaded")
+            self.whisperx_model = whisperx.load_model(self.model_size, self._device, compute_type="int8")
+            logger.info(f"WhisperX model loaded on {self._device}")
         
         if self.voice_encoder is None:
             self.voice_encoder = VoiceEncoder()
@@ -1384,7 +1412,7 @@ class AudioProcessor:
                 # Align timestamps
                 language_code = result.get("language", "en")
                 model_a, metadata = self._get_whisperx_align_model(language_code)
-                result = whisperx.align(result["segments"], model_a, metadata, audio_chunk, device="cpu", return_char_alignments=False)
+                result = whisperx.align(result["segments"], model_a, metadata, audio_chunk, device=self._device, return_char_alignments=False)
                 
                 # IMPROVED: Merge transcription segments before extracting embeddings (same as non-chunked)
                 # Extract embeddings and cluster
@@ -1584,7 +1612,19 @@ class AudioProcessor:
             
             try:
                 logger.info("Starting Pyannote.audio pipeline...")
-                diarization = self.diarization_pipeline(audio_path)
+                # Dynamic speaker constraints: num_speakers (exact) OR min_speakers/max_speakers (range)
+                pipeline_kwargs = {}
+                if self.num_speakers is not None:
+                    pipeline_kwargs["num_speakers"] = self.num_speakers
+                    logger.info(f"   Speaker count: exact num_speakers={self.num_speakers}")
+                elif self.min_speakers is not None or self.max_speakers is not None:
+                    if self.min_speakers is not None:
+                        pipeline_kwargs["min_speakers"] = self.min_speakers
+                    if self.max_speakers is not None:
+                        pipeline_kwargs["max_speakers"] = self.max_speakers
+                    if pipeline_kwargs:
+                        logger.info(f"   Speaker range: min_speakers={pipeline_kwargs.get('min_speakers', 'auto')}, max_speakers={pipeline_kwargs.get('max_speakers', 'auto')}")
+                diarization = self.diarization_pipeline(audio_path, **pipeline_kwargs)
                 diarization_result[0] = diarization
             except Exception as e:
                 diarization_error[0] = e
@@ -1596,7 +1636,7 @@ class AudioProcessor:
             
             diarization = diarization_result[0]
             segments = []
-            for turn, _, speaker in diarization.itertracks(yield_label=True):
+            for turn, _, speaker in diarization.speaker_diarization.itertracks(yield_label=True):
                 segments.append({
                     "speaker": speaker,
                     "start": turn.start,

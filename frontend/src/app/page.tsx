@@ -1,4 +1,4 @@
- 'use client';
+'use client';
 
 import { useState } from 'react';
 import UploadForm from '@/components/UploadForm';
@@ -7,7 +7,7 @@ import { HistorySection } from '@/components/HistorySection';
 import { AboutSection } from '@/components/AboutSection';
 import { apiService } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Mic, Brain, TrendingUp, Shield, Zap, Sparkles } from 'lucide-react';
+import { Mic, Brain, TrendingUp, Shield, Zap } from 'lucide-react';
 import type { UploadResponse, StatusResponse, CallResults } from '@/lib/types';
 
 export default function Home() {
@@ -37,19 +37,13 @@ export default function Home() {
     setAnalysisStatus({ status: 'processing', progress: 0, call_id: uploadedFile.call_id });
 
     try {
-      // Start analysis
-      const analysisResponse = await apiService.analyzeCall(uploadedFile.call_id);
-      console.log('Analysis started:', analysisResponse);
-
-      // Poll for status updates
+      await apiService.analyzeCall(uploadedFile.call_id);
       let pollCount = 0;
-      const maxPolls = 300; // Maximum 10 minutes (300 * 2 seconds)
-      
+      const maxPolls = 300;
+
       const pollStatus = async () => {
         try {
           pollCount++;
-          
-          // Safety check to prevent infinite polling
           if (pollCount > maxPolls) {
             setIsAnalyzing(false);
             toast.error('Analysis is taking longer than expected. Please check back later.');
@@ -60,48 +54,37 @@ export default function Home() {
           setAnalysisStatus(statusResponse);
 
           if (statusResponse.status === 'processing' || statusResponse.status === 'pending') {
-            // Continue polling
             setTimeout(pollStatus, 2000);
           } else if (statusResponse.status === 'completed') {
-            // Fetch results
             try {
               const results = await apiService.getResults(uploadedFile.call_id);
               setAnalysisResults(results);
               setIsAnalyzing(false);
-              toast.success('Analysis completed successfully!');
+              toast.success('Analysis completed.');
             } catch (error: any) {
-              console.error('Error fetching results:', error);
               setIsAnalyzing(false);
-              toast.error(`Failed to fetch results: ${error?.message || 'Unknown error'}`);
+              toast.error(error?.message || 'Failed to fetch results.');
             }
           } else if (statusResponse.status === 'failed') {
             setIsAnalyzing(false);
-            toast.error('Analysis failed. Please try again or contact support if the issue persists.');
+            toast.error('Analysis failed. Please try again.');
           } else {
-            // Unknown status, continue polling but log warning
-            console.warn('Unknown status:', statusResponse.status);
             setTimeout(pollStatus, 2000);
           }
         } catch (error: any) {
-          console.error('Error polling status:', error);
-          // Don't stop polling on network errors, but limit retries
-          if (pollCount < 10) {
-            setTimeout(pollStatus, 2000);
-          } else {
+          if (pollCount < 10) setTimeout(pollStatus, 2000);
+          else {
             setIsAnalyzing(false);
-            toast.error(`Error checking analysis status: ${error?.message || 'Network error'}`);
+            toast.error('Error checking status.');
           }
         }
       };
 
-      // Start polling
       setTimeout(pollStatus, 1000);
     } catch (error: any) {
-      console.error('Error starting analysis:', error);
       setIsAnalyzing(false);
       setAnalysisStatus(null);
-      const errorMessage = error?.message || 'Failed to start analysis. Please try again.';
-      toast.error(`Analysis failed: ${errorMessage}`);
+      toast.error(error?.message || 'Failed to start analysis.');
     }
   };
 
@@ -114,173 +97,129 @@ export default function Home() {
 
   return (
     <div>
-      {/* Home Section */}
       <section id="home" className="pt-20 scroll-mt-24">
-        {/* Hero Section */}  
-        <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-900/40 to-black/40 blur-3xl"></div>
-        </div>
-        <div className="relative container mx-auto px-6 py-20 text-center">
-          <div className="max-w-4xl mx-auto">
-
-            
-            <h1 className="text-5xl md:text-7xl font-bold mb-6">
-              <span className="bg-gradient-to-r from-white via-blue-200 to-blue-200 bg-clip-text text-transparent">
-                Call Analysis
-              </span>
-              <br />
-              <span className="bg-gradient-to-r from-blue-200 to-blue-300 bg-clip-text text-transparent">
-                Revolution
-              </span>
+        <div className="container mx-auto px-6 py-16 md:py-24">
+          <div className="max-w-3xl">
+            <h1 className="text-4xl md:text-5xl font-bold text-slate-100 mb-4 tracking-tight">
+              Call Analysis
             </h1>
-            
-            <p className="text-xl text-white/80 max-w-3xl mx-auto mb-12 leading-relaxed">
-              Transform your call center operations with advanced AI that analyzes sentiment, 
-              emotions, and sales potential in real-time. Get actionable insights that drive results.
+            <p className="text-lg text-slate-400 mb-12 max-w-xl">
+              Upload a call recording. Get sentiment, emotions, and sales likelihood—without the buzzwords.
             </p>
 
-            {/* Feature Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-              <div className="group bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6 hover:bg-white/15 transition-all duration-300">
-                <div className="w-12 h-12 bg-gradient-to-r from-blue-900 to-slate-950 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform duration-300">
-                  <Mic className="h-6 w-6 text-white" />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="flex items-start gap-3 p-4 rounded-lg bg-slate-800/60 border border-slate-700/50">
+                <div className="w-9 h-9 rounded-lg bg-teal-500/20 flex items-center justify-center shrink-0">
+                  <Mic className="h-4 w-4 text-teal-400" />
                 </div>
-                <h3 className="text-white font-semibold mb-2">Speech Recognition</h3>
-                <p className="text-white/70 text-sm">Advanced Whisper AI for accurate transcription</p>
+                <div>
+                  <h3 className="font-medium text-slate-200 text-sm">Transcription</h3>
+                  <p className="text-slate-500 text-xs mt-0.5">Whisper-based speech-to-text</p>
+                </div>
               </div>
-              
-              <div className="group bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6 hover:bg-white/15 transition-all duration-300">
-                <div className="w-12 h-12 bg-gradient-to-r from-blue-900 to-blue-900 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform duration-300">
-                  <Brain className="h-6 w-6 text-white" />
+              <div className="flex items-start gap-3 p-4 rounded-lg bg-slate-800/60 border border-slate-700/50">
+                <div className="w-9 h-9 rounded-lg bg-teal-500/20 flex items-center justify-center shrink-0">
+                  <Brain className="h-4 w-4 text-teal-400" />
                 </div>
-                <h3 className="text-white font-semibold mb-2">Sentiment Analysis</h3>
-                <p className="text-white/70 text-sm">BERT-powered emotion and sentiment detection</p>
+                <div>
+                  <h3 className="font-medium text-slate-200 text-sm">Sentiment & emotion</h3>
+                  <p className="text-slate-500 text-xs mt-0.5">BERT-style analysis</p>
+                </div>
               </div>
-              
-              <div className="group bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6 hover:bg-white/15 transition-all duration-300">
-                <div className="w-12 h-12 bg-gradient-to-r from-blue-900 to-slate-900 rounded-xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform duration-300">
-                  <TrendingUp className="h-6 w-6 text-white" />
+              <div className="flex items-start gap-3 p-4 rounded-lg bg-slate-800/60 border border-slate-700/50">
+                <div className="w-9 h-9 rounded-lg bg-teal-500/20 flex items-center justify-center shrink-0">
+                  <TrendingUp className="h-4 w-4 text-teal-400" />
                 </div>
-                <h3 className="text-white font-semibold mb-2">Sales Prediction</h3>
-                <p className="text-white/70 text-sm">XGBoost ML for conversion probability</p>
+                <div>
+                  <h3 className="font-medium text-slate-200 text-sm">Sales likelihood</h3>
+                  <p className="text-slate-500 text-xs mt-0.5">Conversion probability</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Main Content / Analyze Section */}
-      <section id="analyze" className="scroll-mt-24">
-        <div className="container mx-auto px-6 pb-20">
-          <div className="space-y-12">
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Upload Section */}
-            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-3xl p-8">
-              <div className="flex items-center space-x-3 mb-6">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-900 to-slate-900 rounded-xl flex items-center justify-center">
-                  <Mic className="h-5 w-5 text-white" />
+      <section id="analyze" className="scroll-mt-24 pb-20">
+        <div className="container mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl">
+            <div className="card">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-9 h-9 rounded-lg bg-slate-700 flex items-center justify-center">
+                  <Mic className="h-4 w-4 text-slate-400" />
                 </div>
-                <h2 className="text-2xl font-bold text-white">
-                  Upload Audio File
-                </h2>
+                <h2 className="text-xl font-semibold text-slate-100">Upload audio</h2>
               </div>
-          <UploadForm
-            onUploadSuccess={handleUploadSuccess}
-            onUploadError={handleUploadError}
-            disabled={isAnalyzing}
-          />
-          
+              <UploadForm
+                onUploadSuccess={handleUploadSuccess}
+                onUploadError={handleUploadError}
+                disabled={isAnalyzing}
+              />
               {uploadedFile && (
-                <div className="mt-6 p-6 bg-green-500/20 backdrop-blur-sm border border-green-400/30 rounded-2xl">
-                  <div className="flex items-center space-x-2 mb-3">
-                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                      <Shield className="h-3 w-3 text-white" />
-                    </div>
-                    <h3 className="font-semibold text-green-200">File Uploaded Successfully</h3>
+                <div className="mt-6 p-4 rounded-lg bg-teal-500/10 border border-teal-500/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Shield className="h-4 w-4 text-teal-400" />
+                    <span className="font-medium text-teal-200 text-sm">File ready</span>
                   </div>
-                  <p className="text-sm text-green-300/80 mb-2">
-                    {uploadedFile.filename} ({uploadedFile.size} bytes)
-                  </p>
-                  <p className="text-sm text-green-300/80">
-                    Call ID: {uploadedFile.call_id}
-                  </p>
+                  <p className="text-slate-400 text-sm">{uploadedFile.filename}</p>
+                  <p className="text-slate-500 text-xs mt-1">ID: {uploadedFile.call_id}</p>
                 </div>
               )}
             </div>
 
-            {/* Analysis Section */}
-            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-3xl p-8">
-              <div className="flex items-center space-x-3 mb-6">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-900 to-blue-900 rounded-xl flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-white" />
+            <div className="card">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-9 h-9 rounded-lg bg-slate-700 flex items-center justify-center">
+                  <Zap className="h-4 w-4 text-slate-400" />
                 </div>
-                <h2 className="text-2xl font-bold text-white">
-                  Run Analysis
-                </h2>
+                <h2 className="text-xl font-semibold text-slate-100">Run analysis</h2>
               </div>
-          
+
               {!uploadedFile ? (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <Brain className="h-8 w-8 text-white/50" />
-                  </div>
-                  <p className="text-white/60">Please upload an audio file first to start analysis.</p>
+                <div className="py-10 text-center">
+                  <Brain className="h-10 w-10 text-slate-600 mx-auto mb-3" />
+                  <p className="text-slate-500 text-sm">Upload an audio file first.</p>
                 </div>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   <button
                     onClick={handleAnalyze}
                     disabled={isAnalyzing}
-                    className="group relative w-full bg-gradient-to-r from-blue-900 to-slate-950 hover:from-black hover:to-slate-900 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold py-4 px-6 rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
+                    className="w-full btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                    <span className="relative flex items-center justify-center space-x-2">
-                      {isAnalyzing ? (
-                        <>
-                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                          <span>Analyzing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Zap className="h-5 w-5" />
-                          <span>Run Analysis</span>
-                        </>
-                      )}
-                    </span>
+                    {isAnalyzing ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Analyzing…
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="h-4 w-4" />
+                        Run analysis
+                      </>
+                    )}
                   </button>
 
-                    {analysisStatus && (
-                    <div className="p-6 bg-blue-900/30 backdrop-blur-sm border border-blue-800/40 rounded-2xl">
-                      <div className="flex items-center space-x-2 mb-3">
-                        <div className="w-6 h-6 bg-blue-900 rounded-full flex items-center justify-center">
-                          <Brain className="h-3 w-3 text-white" />
-                        </div>
-                        <h3 className="font-semibold text-blue-200">Analysis Status</h3>
-                      </div>
-                      <p className="text-sm text-blue-300/80 mb-3">
-                        Status: <span className="capitalize font-medium">{analysisStatus.status}</span>
+                  {analysisStatus && (
+                    <div className="p-4 rounded-lg bg-slate-700/50 border border-slate-600/50">
+                      <p className="text-slate-400 text-sm mb-2">
+                        Status: <span className="capitalize text-slate-300">{analysisStatus.status}</span>
                       </p>
                       {analysisStatus.progress !== undefined && (
-                        <div className="space-y-2">
-                          <div className="w-full bg-blue-900/40 rounded-full h-3 overflow-hidden">
-                            <div 
-                              className="bg-gradient-to-r from-blue-800 to-slate-900 h-3 rounded-full transition-all duration-500 ease-out"
+                        <>
+                          <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-teal-500 h-2 rounded-full transition-all duration-500"
                               style={{ width: `${analysisStatus.progress}%` }}
-                            ></div>
+                            />
                           </div>
-                          <p className="text-xs text-blue-300/80 text-center">
-                            {analysisStatus.progress}% complete
-                          </p>
-                        </div>
+                          <p className="text-slate-500 text-xs mt-1">{analysisStatus.progress}%</p>
+                        </>
                       )}
                     </div>
                   )}
 
-                  <button
-                    onClick={handleReset}
-                    className="w-full bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 hover:border-white/30 text-white font-medium py-3 px-6 rounded-2xl transition-all duration-300"
-                  >
+                  <button onClick={handleReset} className="w-full btn-secondary py-2.5">
                     Reset
                   </button>
                 </div>
@@ -288,40 +227,33 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Results Section (scroll target) */}
-          <section id="results" className="scroll-mt-24">
-            {analysisResults && (
-              <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-3xl p-8">
-                <div className="flex items-center space-x-3 mb-8">
-                  <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
-                    <TrendingUp className="h-5 w-5 text-white" />
+          <section id="results" className="scroll-mt-24 mt-12">
+            {analysisResults ? (
+              <div className="card max-w-6xl">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-9 h-9 rounded-lg bg-teal-500/20 flex items-center justify-center">
+                    <TrendingUp className="h-4 w-4 text-teal-400" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white">
-                    Analysis Results
-                  </h2>
+                  <h2 className="text-xl font-semibold text-slate-100">Results</h2>
                 </div>
                 <AnalysisDashboard results={analysisResults} />
               </div>
-            )}
-            {!analysisResults && (
-              <div className="bg-white/5 backdrop-blur-sm border border-dashed border-white/20 rounded-3xl p-8 text-center text-white/70">
-                Run an analysis to see detailed results here.
+            ) : (
+              <div className="max-w-6xl rounded-xl border border-dashed border-slate-600 p-12 text-center">
+                <p className="text-slate-500 text-sm">Run an analysis to see results here.</p>
               </div>
             )}
           </section>
         </div>
-        </div>
       </section>
 
-      {/* History Section */}
-      <section id="history" className="scroll-mt-24 py-20">
+      <section id="history" className="scroll-mt-24 py-16">
         <div className="container mx-auto px-6">
           <HistorySection />
         </div>
       </section>
 
-      {/* About Section */}
-      <section id="about" className="scroll-mt-24 py-20">
+      <section id="about" className="scroll-mt-24 py-16">
         <div className="container mx-auto px-6">
           <AboutSection />
         </div>

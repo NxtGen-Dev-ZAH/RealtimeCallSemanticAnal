@@ -39,7 +39,14 @@ class DemoSystem:
         """Initialize demo system."""
         self.analyzer = ConversationAnalyzer()
         self.dashboard = Dashboard()
-        self.audio_processor = AudioProcessor(hf_token=hf_token)
+        # For real-call analysis via the web frontend, assume two speakers.
+        # Use WhisperX 3.x built-in diarization (Pyannote.audio) with num_speakers=2 when HF_TOKEN is available.
+        self.audio_processor = AudioProcessor(
+            hf_token=hf_token,
+            num_speakers=2,
+            max_speakers=2,
+            use_whisperx_builtin_diarization=True
+        )
         self.text_processor = TextProcessor()
         self.feature_extractor = FeatureExtractor()
         

@@ -133,6 +133,7 @@ export function HistorySection() {
                         {(call.sale_probability * 100).toFixed(1)}% sale probability
                       </span>
                     </div>
+
                   </div>
 
                   <div className="mt-3 flex items-center space-x-4">

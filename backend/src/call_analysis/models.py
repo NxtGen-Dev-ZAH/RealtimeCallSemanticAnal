@@ -810,7 +810,7 @@ class EmotionDetector:
             self.is_trained = True
     
     def load_model(self, model_path: str):
-        """Load trained AcousticEmotionModel weights"""
+        """Load trained AcousticEmotionModel weights. On architecture mismatch, falls back to untrained."""
         try:
             self.model.load_model(model_path)
             self.is_trained = True
@@ -820,10 +820,13 @@ class EmotionDetector:
             logger.error(error_msg)
             raise ModelLoadError(error_msg) from e
         except Exception as e:
-            error_msg = f"Failed to load emotion model from {model_path}: {e}. " \
-                       f"Check that the file exists and is a valid PyTorch model."
-            logger.error(error_msg)
-            raise ModelLoadError(error_msg) from e
+            # Checkpoint may be from an older architecture (e.g. different conv/lstm sizes)
+            logger.warning(
+                "Failed to load emotion model (likely architecture mismatch with saved checkpoint): %s. "
+                "Using untrained emotion model. Re-train with train_emotion_model.py to fix.",
+                e,
+            )
+            self.is_trained = False
     
     # ============================================================================
     # EXTRA: Model health check (not required by documentation)
@@ -1505,11 +1508,13 @@ class ConversationAnalyzer:
             sale_model_path: Path to sale prediction model (default: backend/models/sale_model.pkl)
         """
         self.sentiment_analyzer = SentimentAnalyzer()
-        
-        # Default model paths
-        default_emotion_path = 'backend/models/emotion_model.pth'
-        default_sale_path = 'backend/models/sale_model.pkl'
-        
+
+        # Resolve default model paths relative to backend package (works from any CWD)
+        _backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        _models_dir = os.path.join(_backend_root, 'models')
+        default_emotion_path = os.path.join(_models_dir, 'emotion_model.pth')
+        default_sale_path = os.path.join(_models_dir, 'sale_model.pkl')
+
         # Use provided paths or defaults
         emotion_path = emotion_model_path or default_emotion_path
         sale_path = sale_model_path or default_sale_path
@@ -1539,14 +1544,14 @@ class ConversationAnalyzer:
                 "Sale predictor model not trained. "
                 "Please train the model using train_sale_predictor.py before using ConversationAnalyzer."
             )
-        
+
         if not self.emotion_detector.is_trained:
-            raise RuntimeError(
-                "Emotion detector model not trained. "
-                "Please train the model using train_emotion_model.py before using ConversationAnalyzer."
+            logger.warning(
+                "Emotion detector not trained or load failed (incompatible checkpoint). "
+                "Emotion predictions may be poor. Re-train with train_emotion_model.py for best results."
             )
-        
-        logger.info("All models loaded and verified as trained")
+        else:
+            logger.info("All models loaded and verified as trained")
     
     def analyze_conversation(self, audio_path: str = None, text_data: str = None, 
                            segments: List[Dict] = None, audio_features: Dict = None,

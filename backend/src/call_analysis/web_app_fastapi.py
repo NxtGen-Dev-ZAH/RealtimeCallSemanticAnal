@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import (
     FastAPI,
+    Request,
     UploadFile,
     File,
     Form,
@@ -43,12 +44,12 @@ import threading
 import numpy as np
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, Response
-from pydantic import BaseModel
 from pymongo import MongoClient
 
 from .demo import DemoSystem
 from .models import ConversationAnalyzer
 from .dashboard import Dashboard
+from .progress_logger import setup_project_logging, get_progress_logger
 
 # Import configuration (same pattern as Flask app)
 import sys as _sys
@@ -61,6 +62,9 @@ logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
+    setup_project_logging()
+    progress_log = get_progress_logger()
+
     app = FastAPI(
         title="Call Analysis System API",
         description="FastAPI backend for call analysis, compatible with existing Next.js frontend.",
@@ -175,11 +179,6 @@ def create_app() -> FastAPI:
                 status_code=503,
                 detail="MongoDB connection not available. Please check your MONGODB_URI configuration and ensure MongoDB Atlas network access is configured."
             )
-
-    # --------- Pydantic models ----------
-
-    class StartAnalysisRequest(BaseModel):
-        call_id: str
 
     # --------- Routes ----------
 
@@ -737,21 +736,21 @@ def create_app() -> FastAPI:
                 {"call_id": call_id},
                 {"$set": {"status": "processing", "progress": 10, "updated_at": datetime.now()}},
             )
-            logger.info(f"[{call_id}] Starting transcription...")
+            progress_log.info(f"[{call_id}] Step 1/5: Starting transcription...")
             transcription = demo_system.audio_processor.transcribe_audio(audio_path, call_id)
-            
+
             db.calls.update_one(
                 {"call_id": call_id},
                 {"$set": {"progress": 20, "updated_at": datetime.now()}},
             )
-            logger.info(f"[{call_id}] Starting diarization...")
+            progress_log.info(f"[{call_id}] Step 2/5: Starting diarization...")
             segments = demo_system.audio_processor.perform_speaker_diarization(audio_path, call_id)
-            
+
             db.calls.update_one(
                 {"call_id": call_id},
                 {"$set": {"progress": 40, "updated_at": datetime.now()}},
             )
-            logger.info(f"[{call_id}] Processing segments...")
+            progress_log.info(f"[{call_id}] Step 3/5: Processing segments...")
             processed_segments = demo_system.text_processor.segment_conversation(
                 transcription.get("text", ""),
                 segments,
@@ -763,14 +762,14 @@ def create_app() -> FastAPI:
                 {"call_id": call_id},
                 {"$set": {"progress": 60, "updated_at": datetime.now()}},
             )
-            logger.info(f"[{call_id}] Extracting features...")
+            progress_log.info(f"[{call_id}] Step 4/5: Extracting features...")
             audio_features = demo_system.audio_processor.extract_audio_features(audio_path)
 
             db.calls.update_one(
                 {"call_id": call_id},
                 {"$set": {"progress": 80, "updated_at": datetime.now()}},
             )
-            logger.info(f"[{call_id}] Running ML analysis...")
+            progress_log.info(f"[{call_id}] Step 5/5: Running ML analysis...")
             result = demo_system.analyzer.analyze_conversation(
                 audio_path=audio_path,
                 segments=processed_segments,
@@ -863,7 +862,15 @@ def create_app() -> FastAPI:
 
             # Count unique participants
             participants = len(set([s.get("speaker", "Unknown") for s in processed_segments]))
-            
+
+            # Use actual audio file duration so reported length matches the real call (e.g. 3m23s), not just last segment end
+            try:
+                import librosa
+                actual_duration = float(librosa.get_duration(path=audio_path))
+            except Exception:
+                actual_duration = float(result.get("duration", 0))
+            result["duration"] = actual_duration
+
             # Update MongoDB with results
             db.calls.update_one(
                 {"call_id": call_id},
@@ -871,7 +878,7 @@ def create_app() -> FastAPI:
                     "$set": {
                         "status": "completed",
                         "progress": 100,
-                        "duration": float(result.get("duration", 0)),
+                        "duration": actual_duration,
                         "participants": participants,
                         "avg_sentiment": float(avg_sentiment),
                         "sale_probability": float(sale_probability),
@@ -894,9 +901,10 @@ def create_app() -> FastAPI:
                 }
             )
 
-            logger.info(f"[{call_id}] Analysis completed successfully")
+            progress_log.info(f"[{call_id}] Analysis completed successfully")
         except Exception as e:
-            logger.error(f"[{call_id}] Analysis failed: {e}", exc_info=True)
+            progress_log.error(f"[{call_id}] Analysis failed: {e}")
+            logger.exception(f"[{call_id}] Analysis failed")
             db.calls.update_one(
                 {"call_id": call_id},
                 {
@@ -910,10 +918,26 @@ def create_app() -> FastAPI:
             )
 
     @app.post("/api/analyze")
-    def start_analysis(payload: StartAnalysisRequest) -> JSONResponse:
-        """Start analysis for uploaded file (runs in background)."""
+    async def start_analysis(request: Request) -> JSONResponse:
+        """Start analysis for uploaded file (runs in background). Accepts JSON body with call_id or callId."""
         try:
-            call_id = payload.call_id
+            try:
+                body = await request.json()
+            except Exception as e:
+                logger.warning(f"/api/analyze received non-JSON body: {e}")
+                raise HTTPException(
+                    status_code=422,
+                    detail="Request body must be JSON with 'call_id' or 'callId'.",
+                ) from e
+            if not isinstance(body, dict):
+                raise HTTPException(status_code=422, detail="Request body must be a JSON object.")
+            call_id = body.get("call_id") or body.get("callId")
+            if not call_id or not isinstance(call_id, str):
+                logger.warning(f"/api/analyze missing call_id/callId in body: {body}")
+                raise HTTPException(
+                    status_code=422,
+                    detail="Request body must include 'call_id' or 'callId' (value from upload response).",
+                )
 
             check_mongodb_connection()
             call_doc = db.calls.find_one({"call_id": call_id})

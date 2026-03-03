@@ -40,8 +40,8 @@ export function AboutSection() {
   const stats = [
     { label: 'Supported Formats', value: 'WAV, MP3, M4A' },
     { label: 'Max File Size', value: '100MB' },
-    { label: 'Processing Time', value: '< 2 minutes' },
-    { label: 'Accuracy', value: '95%+' },
+    { label: 'Processing Time on GPU', value: '< 2 minutes' },
+    { label: 'Accuracy', value: '80%+' },
   ];
 
   return (

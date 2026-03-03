@@ -15,113 +15,61 @@ src_dir = os.path.join(backend_dir, 'src')
 sys.path.insert(0, src_dir)
 
 from dotenv import load_dotenv  # type: ignore[import]
-from src.call_analysis.preprocessing import AudioProcessor
+from call_analysis.progress_logger import setup_project_logging, get_progress_logger
+from call_analysis.preprocessing import AudioProcessor
 
 # Load environment variables
 load_dotenv()
 
+
 def transcribe_audio_file(audio_path: str, model_size: str = "base"):
     """
     Transcribe audio file to text using Whisper.
-    
-    Args:
-        audio_path: Path to audio file
-        model_size: Whisper model size (tiny, base, small, medium, large)
     """
-    print("=" * 60)
-    print("WHISPER AUDIO TRANSCRIPTION")
-    print("=" * 60)
-    print()
-    
-    # Check if file exists
+    setup_project_logging()
+    log = get_progress_logger()
+
+    log.info("=" * 60)
+    log.info("WHISPER AUDIO TRANSCRIPTION")
+    log.info("=" * 60)
+
     if not os.path.exists(audio_path):
-        print(f"❌ Error: Audio file not found: {audio_path}")
+        log.error(f"Audio file not found: {audio_path}")
         return
-    
-    print(f"📁 Audio file: {audio_path}")
-    file_size = os.path.getsize(audio_path) / (1024 * 1024)  # MB
-    print(f"📊 File size: {file_size:.2f} MB")
-    print()
-    
-    # Initialize AudioProcessor
-    print(f"🔧 Initializing Whisper (model: {model_size})...")
-    print("   (This may take a moment on first run)")
-    print()
-    
+
+    file_size = os.path.getsize(audio_path) / (1024 * 1024)
+    log.info(f"Audio file: {audio_path} ({file_size:.2f} MB)")
+
+    log.info(f"Step 1/4: Initializing Whisper (model: {model_size})...")
     try:
-        # Get HF token from environment (optional for Whisper, required for Pyannote)
         hf_token = os.getenv('HF_TOKEN', None)
         processor = AudioProcessor(model_size=model_size, hf_token=hf_token)
-        print("✅ Whisper initialized successfully")
-        print()
+        log.info("Step 1/4: Whisper initialized.")
     except Exception as e:
-        print(f"❌ Failed to initialize Whisper: {e}")
-        print()
-        print("💡 Troubleshooting:")
-        print("   1. Make sure 'openai-whisper' is installed: pip install openai-whisper")
-        print("   2. Check if you have enough disk space for model download")
-        print("   3. Try smaller model: model_size='tiny' or 'base'")
+        log.error(f"Failed to initialize Whisper: {e}")
+        log.info("Troubleshooting: pip install openai-whisper; try model_size='tiny' or 'base'.")
         return
-    
-    # Transcribe audio
-    print("🎤 Starting transcription...")
-    print("   (This may take several minutes depending on audio length)")
-    print()
-    
+
+    log.info("Step 2/4: Starting transcription (may take several minutes)...")
     try:
         call_id = "transcription_001"
         transcription = processor.transcribe_audio(audio_path, call_id)
-        
-        # Display results
         text = transcription.get('text', '')
         language = transcription.get('language', 'unknown')
         duration = transcription.get('duration', 0)
         segments = transcription.get('segments', [])
-        
-        print("✅ Transcription completed!")
-        print()
-        print("=" * 60)
-        print("TRANSCRIPTION RESULTS")
-        print("=" * 60)
-        print(f"📝 Language: {language}")
-        print(f"⏱️  Duration: {duration:.2f} seconds")
-        print(f"📊 Number of segments: {len(segments)}")
-        print(f"📝 Text length: {len(text)} characters")
-        print()
-        
-        # Display full transcript
-        print("📄 Full Transcript:")
-        print("-" * 60)
-        if text:
-            print(text)
-        else:
-            print("(No speech detected in audio file)")
-        print("-" * 60)
-        print()
-        
-        # Show segments with timestamps
-        if segments:
-            print("📋 Segments with Timestamps:")
-            print("-" * 60)
-            for i, seg in enumerate(segments[:10], 1):  # Show first 10 segments
-                start = seg.get('start', 0)
-                end = seg.get('end', 0)
-                seg_text = seg.get('text', '').strip()
-                if seg_text:
-                    print(f"{i}. [{start:.1f}s - {end:.1f}s]: {seg_text}")
-            if len(segments) > 10:
-                print(f"... and {len(segments) - 10} more segments")
-            print("-" * 60)
-            print()
-        
-        # Save to file - use output directory relative to project root
+
+        log.info(f"Step 2/4: Transcription completed. Language: {language}, Duration: {duration:.2f}s, Segments: {len(segments)}, Chars: {len(text)}.")
+        log.info("Step 3/4: Preparing output...")
+
+        # Save to file
         script_dir = os.path.dirname(os.path.abspath(__file__))
         backend_dir = os.path.dirname(script_dir)
         project_root = os.path.dirname(backend_dir)
         output_dir = os.path.join(project_root, 'output')
         os.makedirs(output_dir, exist_ok=True)
         output_file = os.path.join(output_dir, "transcription_output.txt")
-        
+
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write("=" * 60 + "\n")
@@ -145,24 +93,20 @@ def transcribe_audio_file(audio_path: str, model_size: str = "base"):
                     end = seg.get('end', 0)
                     seg_text = seg.get('text', '').strip()
                     f.write(f"{i}. [{start:.1f}s - {end:.1f}s]: {seg_text}\n")
-            
-            print(f"💾 Transcript saved to: {output_file}")
-            print()
+            log.info(f"Step 3/4: Transcript saved: {output_file}")
         except Exception as e:
-            print(f"⚠️  Could not save transcript to file: {e}")
-            print()
-        
-        print("✅ Done!")
-        print()
-        
+            log.warning(f"Could not save transcript to file: {e}")
+
+        log.info("Step 4/4: Done.")
+        if text:
+            preview = (text[:200] + "...") if len(text) > 200 else text
+            log.info(f"Transcript preview: {preview}")
+        else:
+            log.warning("No speech detected in audio file.")
+
     except Exception as e:
-        print(f"❌ Transcription failed: {e}")
-        print()
-        print("💡 Common issues:")
-        print("   1. Audio file format not supported (use WAV, MP3, or M4A)")
-        print("   2. Audio file is corrupted or empty")
-        print("   3. Insufficient memory (try smaller model: 'tiny' or 'base')")
-        print("   4. Audio quality too poor for Whisper to detect speech")
+        log.error(f"Transcription failed: {e}")
+        log.info("Common issues: unsupported format (use WAV/MP3/M4A), corrupted file, or try model_size='tiny'.")
         import traceback
         traceback.print_exc()
         return

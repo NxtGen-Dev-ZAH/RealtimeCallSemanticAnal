@@ -82,161 +82,127 @@ const AnalysisDashboard = ({ results }: AnalysisDashboardProps) => {
   };
 
   const getSentimentColor = (score: number) => {
-    if (score >= 0.6) return 'text-green-600';
-    if (score >= 0.4) return 'text-yellow-600';
-    return 'text-red-600';
+    if (score >= 0.6) return 'text-green-400';
+    if (score >= 0.4) return 'text-amber-400';
+    return 'text-red-400';
   };
 
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Average Sentiment</p>
+              <p className="text-sm font-medium text-slate-400">Average Sentiment</p>
               <p className={`text-2xl font-bold ${getSentimentColor(results.summary.avg_sentiment)}`}>
                 {getSentimentLabel(results.summary.avg_sentiment)}
               </p>
-              <p className="text-sm text-gray-500">
-                Score: {results.summary.avg_sentiment.toFixed(2)}
-              </p>
+              <p className="text-sm text-slate-500">Score: {results.summary.avg_sentiment.toFixed(2)}</p>
             </div>
             {results.summary.avg_sentiment >= 0.5 ? (
-              <TrendingUp className="h-8 w-8 text-green-600" />
+              <TrendingUp className="h-8 w-8 text-green-400" />
             ) : (
-              <TrendingDown className="h-8 w-8 text-red-600" />
+              <TrendingDown className="h-8 w-8 text-red-400" />
             )}
           </div>
         </div>
-
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Sale Probability</p>
-              <p className="text-2xl font-bold text-primary-600">
-                {(results.sale_probability * 100).toFixed(1)}%
-              </p>
+              <p className="text-sm font-medium text-slate-400">Sale Probability</p>
+              <p className="text-2xl font-bold text-teal-400">{(results.sale_probability * 100).toFixed(1)}%</p>
             </div>
-            <TrendingUp className="h-8 w-8 text-primary-600" />
+            <TrendingUp className="h-8 w-8 text-teal-400" />
           </div>
         </div>
-
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Duration</p>
-              <p className="text-2xl font-bold text-gray-900">
+              <p className="text-sm font-medium text-slate-400">Duration</p>
+              <p className="text-2xl font-bold text-slate-100">
                 {Math.floor(results.summary.total_duration / 60)}m {results.summary.total_duration % 60}s
               </p>
             </div>
-            <Clock className="h-8 w-8 text-gray-600" />
+            <Clock className="h-8 w-8 text-slate-400" />
           </div>
         </div>
-
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Participants</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {results.summary.participants}
-              </p>
+              <p className="text-sm font-medium text-slate-400">Participants</p>
+              <p className="text-2xl font-bold text-slate-100">{results.summary.participants}</p>
             </div>
-            <Users className="h-8 w-8 text-gray-600" />
+            <Users className="h-8 w-8 text-slate-400" />
           </div>
         </div>
       </div>
 
-      {/* Header with Export Buttons */}
-      <div className="flex justify-between items-center mb-6">
-        <div className="border-b border-gray-200 flex-1">
-          <nav className="-mb-px flex space-x-8">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab.id
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-        
-        {/* Export Buttons */}
-        <div className="flex space-x-2 ml-6">
-          <button
-            onClick={handleExportPDF}
-            disabled={isExporting}
-            className="btn-secondary flex items-center space-x-2 disabled:opacity-50"
-          >
-            <FileText className="h-4 w-4" />
-            <span>PDF</span>
+      <div className="flex flex-wrap justify-between items-center gap-4">
+        <nav className="flex gap-1 border-b border-slate-600">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-2 px-3 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === tab.id
+                  ? 'border-teal-500 text-teal-400'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+        <div className="flex gap-2">
+          <button onClick={handleExportPDF} disabled={isExporting} className="btn-secondary flex items-center gap-2 text-sm py-2 px-3 disabled:opacity-50">
+            <FileText className="h-4 w-4" /> PDF
           </button>
-          <button
-            onClick={handleExportCSV}
-            disabled={isExporting}
-            className="btn-secondary flex items-center space-x-2 disabled:opacity-50"
-          >
-            <FileSpreadsheet className="h-4 w-4" />
-            <span>CSV</span>
+          <button onClick={handleExportCSV} disabled={isExporting} className="btn-secondary flex items-center gap-2 text-sm py-2 px-3 disabled:opacity-50">
+            <FileSpreadsheet className="h-4 w-4" /> CSV
           </button>
-          <button
-            onClick={handleExportJSON}
-            disabled={isExporting}
-            className="btn-secondary flex items-center space-x-2 disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" />
-            <span>JSON</span>
+          <button onClick={handleExportJSON} disabled={isExporting} className="btn-secondary flex items-center gap-2 text-sm py-2 px-3 disabled:opacity-50">
+            <Download className="h-4 w-4" /> JSON
           </button>
         </div>
       </div>
 
-      {/* Tab Content */}
       <div className="space-y-6">
         {activeTab === 'overview' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="card">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Sentiment Over Time</h3>
+              <h3 className="text-lg font-semibold text-slate-100 mb-4">Sentiment over time</h3>
               <SentimentChart data={results.sentiment_scores} />
             </div>
             <div className="card">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Emotion Distribution</h3>
+              <h3 className="text-lg font-semibold text-slate-100 mb-4">Emotion distribution</h3>
               <EmotionChart data={results.emotions} />
             </div>
             <div className="card">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Sale Probability</h3>
+              <h3 className="text-lg font-semibold text-slate-100 mb-4">Sale probability</h3>
               <SaleGauge value={results.sale_probability} />
             </div>
           </div>
         )}
-
         {activeTab === 'sentiment' && (
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Sentiment Analysis</h3>
+            <h3 className="text-lg font-semibold text-slate-100 mb-4">Sentiment analysis</h3>
             <SentimentChart data={results.sentiment_scores} />
           </div>
         )}
-
         {activeTab === 'emotions' && (
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Emotion Detection</h3>
+            <h3 className="text-lg font-semibold text-slate-100 mb-4">Emotion detection</h3>
             <EmotionChart data={results.emotions} />
           </div>
         )}
-
         {activeTab === 'phrases' && (
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Key Phrases</h3>
-            <KeyPhrases 
+            <h3 className="text-lg font-semibold text-slate-100 mb-4">Key phrases</h3>
+            <KeyPhrases
               phrases={{
-                positive: results.key_phrases.positive.map(p => p.phrase),
-                negative: results.key_phrases.negative.map(p => p.phrase)
-              }} 
+                positive: results.key_phrases.positive.map((p) => p.phrase),
+                negative: results.key_phrases.negative.map((p) => p.phrase),
+              }}
             />
           </div>
         )}

@@ -1,14 +1,18 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { DM_Sans } from 'next/font/google';
 import './globals.css';
 import { Toaster } from 'react-hot-toast';
 import Navbar from '@/components/Navbar';
 
-const inter = Inter({ subsets: ['latin'] });
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-dm-sans',
+});
 
 export const metadata: Metadata = {
-  title: 'Call Analysis System | AI-Powered Conversation Intelligence',
-  description: 'Advanced multimodal sentiment analysis for telephonic conversations with real-time insights and sales prediction',
+  title: 'Call Analysis System | Conversation Intelligence',
+  description: 'Sentiment and emotion analysis for phone calls with actionable insights.',
 };
 
 export default function RootLayout({
@@ -18,36 +22,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={inter.className}>
-        <div className="min-h-screen relative bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-          {/* Decorative gradient overlay (removed problematic inline SVG to avoid JSX parse errors) */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-blue-900/20 via-transparent to-slate-900/20"></div>
+      <body className={dmSans.className}>
+        <div className="min-h-screen bg-slate-900">
           <Navbar />
-          <main className="relative z-10">
+          <main className="relative">
             {children}
           </main>
-          <Toaster 
+          <Toaster
             position="bottom-right"
             toastOptions={{
               duration: 4000,
-              style: {
-                background: '#363636',
-                color: '#fff',
-              },
-              success: {
-                duration: 3000,
-                iconTheme: {
-                  primary: '#22c55e',
-                  secondary: '#fff',
-                },
-              },
-              error: {
-                duration: 5000,
-                iconTheme: {
-                  primary: '#ef4444',
-                  secondary: '#fff',
-                },
-              },
+              style: { background: '#1e293b', color: '#f1f5f9', border: '1px solid #334155' },
+              success: { iconTheme: { primary: '#0d9488', secondary: '#fff' } },
+              error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
             }}
           />
         </div>

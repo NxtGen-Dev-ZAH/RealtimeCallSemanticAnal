@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Upload, FileAudio, X, Cloud, Sparkles } from 'lucide-react';
+import { Upload, FileAudio, X } from 'lucide-react';
 import { apiService } from '@/lib/api';
 import toast from 'react-hot-toast';
 import type { UploadResponse } from '@/lib/types';
@@ -19,42 +19,31 @@ const UploadForm = ({ onUploadSuccess, onUploadError, disabled }: UploadFormProp
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allowedTypes = ['audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/m4a', 'audio/mp4'];
-  const maxSize = 100 * 1024 * 1024; // 100MB
+  const maxSize = 100 * 1024 * 1024;
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    // Validate file type
     if (!allowedTypes.includes(file.type)) {
-      toast.error('Please select a valid audio file (.wav, .mp3, .m4a)');
+      toast.error('Use .wav, .mp3, or .m4a (max 100MB)');
       return;
     }
-
-    // Validate file size
     if (file.size > maxSize) {
-      toast.error('File size must be less than 100MB');
+      toast.error('File must be under 100MB');
       return;
     }
-
     setSelectedFile(file);
   };
 
   const handleUpload = async () => {
     if (!selectedFile) return;
-
     setIsUploading(true);
     setUploadProgress(0);
-
     try {
       const response = await apiService.uploadAudio(selectedFile);
-      onUploadSuccess({
-        ...response,
-        filename: selectedFile.name,
-        size: selectedFile.size,
-      });
-    } catch (error: any) {
-      onUploadError(error instanceof Error ? error : new Error('Upload failed'));
+      onUploadSuccess({ ...response, filename: selectedFile.name, size: selectedFile.size });
+    } catch {
+      onUploadError(new Error('Upload failed'));
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -63,117 +52,93 @@ const UploadForm = ({ onUploadSuccess, onUploadError, disabled }: UploadFormProp
 
   const handleRemoveFile = () => {
     setSelectedFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return '0 B';
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   return (
-    <div className="space-y-6">
-      {/* File Input */}
-      <div className="relative group">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-900/30 to-black/30 rounded-2xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-        <div className="relative border-2 border-dashed border-white/30 rounded-2xl p-8 text-center hover:border-white/50 transition-all duration-300 bg-white/5 backdrop-blur-sm">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".wav,.mp3,.m4a"
-            onChange={handleFileSelect}
-            disabled={disabled || isUploading}
-            className="hidden"
-          />
-          
-          {!selectedFile ? (
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="cursor-pointer group/upload"
+    <div className="space-y-4">
+      <div
+        className="border-2 border-dashed border-slate-600 rounded-xl p-6 text-center hover:border-slate-500 transition-colors bg-slate-800/40"
+        onClick={() => !selectedFile && fileInputRef.current?.click()}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".wav,.mp3,.m4a"
+          onChange={handleFileSelect}
+          disabled={disabled || isUploading}
+          className="hidden"
+        />
+        {!selectedFile ? (
+          <div className="cursor-pointer">
+            <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-slate-700 flex items-center justify-center">
+              <Upload className="h-6 w-6 text-slate-400" />
+            </div>
+            <p className="text-slate-300 font-medium mb-1">Drop audio here or click to browse</p>
+            <p className="text-slate-500 text-sm">.wav, .mp3, .m4a — max 100MB</p>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between p-4 rounded-lg bg-slate-700/50 border border-slate-600/50 text-left">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-teal-500/20 flex items-center justify-center shrink-0">
+                <FileAudio className="h-5 w-5 text-teal-400" />
+              </div>
+              <div>
+                <p className="font-medium text-slate-200 text-sm">{selectedFile.name}</p>
+                <p className="text-slate-500 text-xs">{formatFileSize(selectedFile.size)}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleRemoveFile(); }}
+              disabled={disabled || isUploading}
+              className="w-8 h-8 rounded-lg bg-slate-600 hover:bg-slate-500 flex items-center justify-center text-slate-400 hover:text-slate-200 disabled:opacity-50 transition-colors"
             >
-              <div className="relative w-20 h-20 mx-auto mb-6">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-900 to-slate-950 rounded-2xl blur opacity-30 group-hover/upload:opacity-50 transition-opacity duration-300"></div>
-                <div className="relative w-full h-full bg-gradient-to-r from-blue-900 to-slate-950 rounded-2xl flex items-center justify-center group-hover/upload:scale-110 transition-transform duration-300">
-                  <Cloud className="h-10 w-10 text-white" />
-                </div>
-              </div>
-              <p className="text-xl font-semibold text-white mb-3">
-                Drop your audio file here
-              </p>
-              <p className="text-white/70 mb-4">
-                or click to browse files
-              </p>
-              <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2">
-                <Sparkles className="h-4 w-4 text-yellow-400" />
-                <span className="text-white/90 text-sm">
-                  Supports .wav, .mp3, .m4a up to 100MB
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between p-6 bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
-                  <FileAudio className="h-6 w-6 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-semibold text-white">{selectedFile.name}</p>
-                  <p className="text-sm text-white/70">{formatFileSize(selectedFile.size)}</p>
-                </div>
-              </div>
-              <button
-                onClick={handleRemoveFile}
-                disabled={disabled || isUploading}
-                className="w-8 h-8 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg flex items-center justify-center text-red-300 hover:text-red-200 disabled:opacity-50 transition-all duration-200"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-        </div>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Upload Button */}
       {selectedFile && (
         <button
           onClick={handleUpload}
           disabled={disabled || isUploading}
-          className="group relative w-full bg-gradient-to-r from-blue-900 to-slate-950 hover:from-black hover:to-slate-900 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold py-4 px-6 rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
+          className="w-full btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          <span className="relative flex items-center justify-center space-x-2">
-            {isUploading ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                <span>Uploading...</span>
-              </>
-            ) : (
-              <>
-                <Upload className="h-5 w-5" />
-                <span>Upload File</span>
-              </>
-            )}
-          </span>
+          {isUploading ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Uploading…
+            </>
+          ) : (
+            <>
+              <Upload className="h-4 w-4" />
+              Upload file
+            </>
+          )}
         </button>
       )}
 
-      {/* Upload Progress */}
       {isUploading && (
-        <div className="space-y-3">
-          <div className="flex justify-between text-sm text-white/80">
-            <span>Uploading to cloud...</span>
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs text-slate-500">
+            <span>Uploading…</span>
             <span>{uploadProgress}%</span>
           </div>
-          <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden">
+          <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
             <div
-              className="bg-gradient-to-r from-blue-900 to-slate-950 h-3 rounded-full transition-all duration-500 ease-out"
+              className="bg-teal-500 h-1.5 rounded-full transition-all duration-300"
               style={{ width: `${uploadProgress}%` }}
-            ></div>
+            />
           </div>
         </div>
       )}

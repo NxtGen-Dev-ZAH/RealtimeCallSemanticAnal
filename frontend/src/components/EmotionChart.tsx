@@ -14,15 +14,13 @@ const EmotionChart = ({ data }: EmotionChartProps) => {
     percentage: ((value / Object.values(data).reduce((a, b) => a + b, 0)) * 100).toFixed(1),
   }));
 
-  // Color palette for emotions
-  const COLORS = {
-    happy: '#22c55e',
-    neutral: '#6b7280',
-    sad: '#3b82f6',
-    angry: '#ef4444',
-    fearful: '#f59e0b',
-    surprised: '#1e40af',
-    disgusted: '#10b981',
+  // Color palette for emotions (keys must match backend: neutral, happiness, anger, sadness, frustration)
+  const COLORS: Record<string, string> = {
+    neutral: '#FFFFFF', // gray-500
+    happiness: '#22c55e', // green-500
+    anger: '#ef4444', // red-500
+    sadness: '#3b82f6', // blue-500
+    frustration: '#f59e0b', // amber-500
   };
 
   const getColor = (emotion: string) => {
